@@ -1,89 +1,214 @@
-# 3D Submarine Simulator (OpenGL / freeGLUT)
+# 🚢 3D Submarine Simulator — OpenGL / freeGLUT
 
-A fully interactive **3D Submarine Simulator** built with **OpenGL + GLUT/freeGLUT** in
-Code::Blocks (single-file C++). Operate a military-style submarine from surface
-sunset run → dive → deep-sea exploration, from both **interior** and **360° exterior**
-cameras.
+![OpenGL](https://img.shields.io/badge/OpenGL-fixed%20pipeline-blue)
+![freeGLUT](https://img.shields.io/badge/freeGLUT-interactive-green)
+![Code::Blocks](https://img.shields.io/badge/Code%3A%3ABlocks-ready-orange)
+![License](https://img.shields.io/badge/license-MIT-lightgrey)
 
-No game engine. Just OpenGL primitives, transforms, lighting, fog and animation.
+A fully interactive **3D Submarine Simulator** written in **a single C++ file** with
+**OpenGL + freeGLUT** (no Unity, no Unreal, no engine). You start on the ocean
+surface at sunset, dive through a cinematic surface → deep-sea transition, then
+operate a military-style submarine from the **control room** or a **360° exterior
+orbit camera**.
 
-## Flow
+Built for a Computer Graphics course: every object is an OpenGL primitive +
+`glTranslate / glRotate / glScale`, lit with ambient / diffuse / specular /
+spotlights, fogged with depth, and animated in the render loop.
 
-`Ocean surface intro` → `Dive animation` → `Menu` → `Mission (interior / exterior)`
+---
 
-## Features
+## 📸 Screenshots
 
-- **Intro scene** — sunset sky, low sun + glitter path, clouds, animated wave
-  surface, distant coastline hills, bow-wave foam, crew silhouettes on deck/sail
-- **Military-style hull** (from primitives) — long pressure hull, round sonar bow,
-  swept conning tower with periscope + comms/radar masts, twin bow searchlights
-  with glow, bow/sail planes, cruciform stern rudder, 7-blade bronze screw
-- **7 cameras** — 360° orbit exterior (drag + wheel zoom), interior control room,
-  front / left / right windows, control screen, free camera (`C` cycles)
-- **Interior control room** — consoles, buttons, gauges, pipes, seats, portholes,
-  4 animated crew members
-- **Deep sea** — 60 fish + jellyfish, seaweed, rocks, corals, rising bubbles,
-  floating particles, sandy floor
-- **Lighting** — bright day sun (surface) → dark ambient + exponential fog (deep),
-  spotlight headlights with visible cone (`L` toggles)
-- **Controls** — full 6-DOF: forward/back, yaw, pitch, roll; propeller speed
-  follows throttle; emergency stop
-- **HUD + missions** — depth, speed, light/engine status, camera, mission timer;
-  5 missions advance by depth/position
+> The repo ships code-only. Run it and drop your captures here:
 
-## Controls
+| Scene | Screenshot |
+|---|---|
+| Surface intro (sunset + foam + crew) | `docs/intro.png` — _add yours_ |
+| Exterior 360° view underwater | `docs/exterior.png` — _add yours_ |
+| Interior control room + crew | `docs/interior.png` — _add yours_ |
+| Headlights illuminating reef | `docs/headlights.png` — _add yours_ |
+
+To add one: take a screenshot while running → save it under `docs/` →
+reference it in the table above.
+
+---
+
+## 🎬 Experience flow
+
+```mermaid
+flowchart TD
+    A[PROGRAM START] --> B[3D OCEAN SURFACE: sunset, waves, hills, foam, crew]
+    B --> C[TITLE: 3D SUBMARINE SIMULATOR]
+    C --> D[MISSION INITIALIZING...]
+    D --> E[DIVING: surface to deep sea, fog + bubbles]
+    E --> F[MISSION STARTED]
+    F --> G[MENU: Start / External view / Controls / Exit]
+    G --> H[INTERIOR: control room + crew + instruments]
+    H --> I[DRIVE: 6-DOF + propeller + headlights]
+    I --> J[EXTERIOR 360°: orbit + zoom while moving]
+    J --> K[WINDOWS + CONTROL SCREEN views]
+    K --> L[DEEP SEA: fish, jellyfish, coral, rocks, bubbles]
+    L --> M[MISSIONS dive to return]
+    M --> N[MISSION COMPLETE]
+```
+
+---
+
+## ✨ Features (mapped to the design spec)
+
+### 1. Opening / intro scene
+Sunset sky (warm west, blue east), low sun with glow + glitter path on water,
+drifting clouds, sine-wave ocean surface, distant coastline hills, trees, floating
+foam collar + bow breaker around the hull, black crew silhouettes on deck and
+sail, slow cinematic push-in camera, `3D SUBMARINE SIMULATOR` →
+`MISSION INITIALIZING...` overlay.
+
+### 2. Diving animation
+~5 s blend: sky fades, exponential fog ramps in, sunlight cools to deep blue,
+bubbles spawn around the hull, marine life + seabed fade in, then
+`MISSION STARTED` → menu.
+
+### 3. Menu
+`START MISSION` · `EXTERNAL 3D VIEW` · `CONTROLS` · `EXIT`
+(navigate `Up/Down`, select `Enter`). `Enter` during the intro skips it.
+
+### 4. Full external 3D view ⭐
+Orbit camera locked on the hull: front / back / left / right / top / bottom /
+diagonal, full 360°. Drag to orbit, wheel to zoom. The boat keeps sailing while
+you inspect it — propeller spin, yaw, pitch and roll are all visible.
+
+### 5. Exterior underwater world
+Fish + schools, jellyfish with pulsing bells, seaweed swaying, corals (branch /
+fan / brain), rocks, sand floor with dunes, rising bubbles, drifting particles,
+headlight cone lighting the water ahead.
+
+### 6–7. Interior + crew
+Control-room shell (floor, ceiling, walls, front console with glowing screen +
+colored buttons, side panels with animated gauge needles, ceiling pipes, seats,
+portholes) plus **4 crew members** with head-bob and working arm animation.
+
+### 8. Controls — full 6-DOF
 
 | Key | Action |
 |---|---|
-| `W` / `S` | Forward / backward |
-| `A` / `D` | Turn left / right |
-| `R` / `F` | Pitch up / down |
-| `Q` / `E` | Roll left / right |
-| `Arrows` | Forward/back + turn |
+| `W` / `S` | Throttle forward / reverse |
+| `A` / `D` | Yaw (turn) |
+| `R` / `F` | Pitch up / down (±45°) |
+| `Q` / `E` | Roll (±30°) |
+| `Arrow Up/Down` | Throttle · `Left/Right` turn |
 | `L` | Headlights on/off |
-| `C` | Cycle camera (7 modes) |
-| `V` / `I` | Exterior / interior view |
+| `C` | Cycle all 7 cameras |
+| `V` / `I` | Jump to exterior / interior |
 | `Space` | Emergency stop |
-| `ESC` | Menu |
-| Mouse drag / wheel | Orbit / zoom (exterior) |
+| `ESC` | Back to menu |
+| Mouse drag / wheel | Orbit / zoom (exterior), look (free cam) |
 
-Menu: `Up/Down` + `Enter`. `Enter` on the intro skips it.
+### 9–10. Cameras & windows
 
-## Build (Code::Blocks, Windows)
+| # | Mode | What you see |
+|---|---|---|
+| 1 | External 3D | Whole boat, 360° orbit + zoom |
+| 2 | Interior | Consoles, crew, gauges, portholes |
+| 3 | Front window | Water rushing past the bow |
+| 4–5 | Left / right window | Reef passing abeam |
+| 6 | Control screen | Long-range forward periscope feel |
+| 7 | Free | Park anywhere, look around |
 
-1. Install Code::Blocks with MinGW + **freeGLUT**
-   (headers in `MinGW\include\GL`, lib `freeglut` linked; put
-   `freeglut.dll` next to the `.exe`).
+### 11–12. Deep sea + bubbles
+80× swaying seaweed, 40× rocks, 30× corals, 100× drifting motes, 60× fish /
+jellyfish with tail-wag + avoidance steering near the hull. Two bubble systems:
+engine bubbles while moving + ambient seep bubbles, all wobbling upward.
+
+### 13–15. Lights
+Day: warm low sun (front-left-top so the camera side is lit) + strong ambient.
+Deep: ambient collapses, blue exponential fog closes in, hull-follow fill light,
+and a `GL_LIGHT2` **spotlight** for the twin bow searchlights with a translucent
+cone mesh. Nearby reef pops bright; distance dissolves into dark.
+
+### 16. 3D transforms in action
+- **Translate** — boat, fish, bubbles, particles, camera dolly
+- **Rotate** — yaw/pitch/roll, propeller, tails, needles, crew arms, orbit cam
+- **Scale** — hull segments, fish sizes, corals, rocks, foam blobs
+- Hull, sail, masts, fins and screw are nested `glPushMatrix` hierarchies.
+
+### 17. Propeller
+7-blade skewed bronze screw + hub spike + shaft. Spin rate ∝ throttle, stops at
+rest.
+
+### 18–20. Life, missions, obstacles
+
+| Mission | Trigger |
+|---|---|
+| 1 Dive | Start submerged |
+| 2 Explore | Depth > 5 m |
+| 3 Navigate | Depth > 15 m |
+| 4 Observe | Travel > 10 m from origin |
+| 5 Return | Rise above 5 m after observing |
+
+Rocks / coral heads / plant thickets are obstacles — steer around them; fish
+actively avoid the hull.
+
+### 21. HUD
+Depth (m) · speed (knots) · `LIGHT ON/OFF` · `ENGINE ACTIVE/IDLE` · camera name ·
+mission name · mission timer · mini control card. Cyan-on-translucent panels stay
+readable in bright and dark water.
+
+---
+
+## 🛠️ The boat (what each part is made of)
+
+| Part | Primitive idea |
+|---|---|
+| Pressure hull | Cylinder + sphere bow + tapered stern cone |
+| Panel lines | Thin torus rings |
+| Deck, limber holes, keel | Scaled cubes |
+| Sail + swept leading edge | Boxes, rotated wedge |
+| Periscope / snorkel / comms / radar / whip | Cylinders + spheres |
+| Bow + sail planes, cruciform rudder | Scaled cubes |
+| Searchlights | Cylinder housings + disk lenses + glow spheres |
+| Screw | Sphere hub + 7 rotated/scaled cube blades |
+
+---
+
+## 🚀 Run it
+
+### Option A — Code::Blocks (recommended, Windows)
+1. Install Code::Blocks + MinGW and **freeGLUT**
+   (headers → `MinGW\include\GL`, link `freeglut`, copy `freeglut.dll`
+   next to the built `.exe`).
 2. Open `submarine.cbp` → **Build → Build and Run**.
-3. Linked libs (already in `.cbp`): `opengl32 glu32 freeglut gdi32 winmm`.
+3. Linked libs are already set: `opengl32 glu32 freeglut gdi32 winmm`.
 
-## Build (command line, MinGW)
-
+### Option B — command line (MinGW)
 ```bat
 g++ submarine.cpp -o submarine.exe -lopengl32 -lglu32 -lfreeglut -lgdi32 -lwinmm
 submarine.exe
 ```
 
-## Files
+---
 
-| File | Purpose |
-|---|---|
-| `submarine.cpp` | Entire simulator (~2300 lines, single file) |
-| `submarine.cbp` | Code::Blocks project (Debug/Release) |
-| `README.md` | This file |
+## 📁 Project layout
 
-## Computer-graphics concepts demonstrated
+```text
+3D Submarine Simulator/
+├── submarine.cpp   # entire simulator (~2300 lines)
+├── submarine.cbp   # Code::Blocks project (Debug + Release)
+├── README.md       # this file
+├── .gitignore      # obj/, bin/, *.exe
+└── docs/           # put your screenshots here
+```
 
-3D modeling from primitives · translation / rotation / scaling · orbit +
-first-person + free cameras · perspective projection · depth buffering ·
-ambient / diffuse / specular / spotlight lighting · fog · blending
-(transparency, glow) · frame-based animation · keyboard + mouse interaction.
+---
 
-## Screenshots
+## 🎓 Good for your report / viva
+Perspective projection · model-view transforms · depth testing · smooth shading ·
+material specular · fog · alpha blending · display loop animation · keyboard /
+mouse / timer callbacks — each maps to a visible feature above, so examiners can
+*see* every concept working.
 
-> Add yours: run → intro surface shot, exterior orbit underwater with
-> headlights on, interior control room.
+## 🗺️ Roadmap ideas
+Collision warning text · sonar minimap · treasure/ring checkpoints · engine audio
+· day/night toggle · recorded demo path.
 
-## License
-
-MIT — free for coursework and portfolios.
+## 📄 License
+MIT — free for coursework, portfolios and remixes.
