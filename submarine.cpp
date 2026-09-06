@@ -273,7 +273,7 @@ void initEnvironment() {
     for (int i = 0; i < 40; i++) {
         Rock r;
         r.x = (rand() % 600 - 300) * 0.1f;
-        r.y = -10.0f - (rand() % 50) * 0.1f;
+        r.y = -16.0f - (rand() % 50) * 0.06f;
         r.z = (rand() % 600 - 300) * 0.1f;
         r.scaleX = 0.3f + (rand() % 100) * 0.01f;
         r.scaleY = 0.2f + (rand() % 100) * 0.008f;
@@ -289,7 +289,7 @@ void initEnvironment() {
     for (int i = 0; i < 30; i++) {
         Coral c;
         c.x = (rand() % 400 - 200) * 0.1f;
-        c.y = -10.0f;
+        c.y = -16.0f;
         c.z = (rand() % 400 - 200) * 0.1f;
         c.size = 0.3f + (rand() % 100) * 0.01f;
         c.type = rand() % 3;
@@ -782,24 +782,54 @@ void drawDistantHills() {
     if (diveBlend <= 0) return;
     glDisable(GL_LIGHTING);
     glPushMatrix();
-    // Left headland
-    glColor3f(0.32f * diveBlend + 0.05f, 0.24f * diveBlend + 0.03f, 0.14f * diveBlend);
+    // Far hazy layer (atmospheric perspective: pale blue-violet)
+    glColor3f(0.55f * diveBlend + 0.1f, 0.52f * diveBlend + 0.1f, 0.62f * diveBlend + 0.08f);
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex3f(-85, 0, -62);
+    for (int i = 0; i <= 14; i++) {
+        float t = i / 14.0f;
+        float hx = -85 + t * 170.0f;
+        float hy = 3.2f + sin(t * 17.0f) * 1.1f + sin(t * 41.0f) * 0.5f;
+        glVertex3f(hx, hy, -62);
+    }
+    glEnd();
+    // Near left headland: brown-green with ridge variation
     glBegin(GL_TRIANGLE_FAN);
     glVertex3f(-80, 0, -55);
-    for (int i = 0; i <= 10; i++) {
-        float t = i / 10.0f;
-        float hx = -80 + t * 55.0f;
-        float hy = 2.5f + sin(t * 9.0f) * 1.2f + sin(t * 23.0f) * 0.5f;
+    for (int i = 0; i <= 12; i++) {
+        float t = i / 12.0f;
+        float hx = -80 + t * 58.0f;
+        float hy = 2.2f + sin(t * 9.0f) * 1.0f + sin(t * 23.0f) * 0.45f;
+        float shade = 0.85f + 0.15f * sin(t * 31.0f);
+        glColor3f((0.30f * diveBlend + 0.05f) * shade,
+                  (0.26f * diveBlend + 0.04f) * shade,
+                  (0.15f * diveBlend + 0.02f) * shade);
         glVertex3f(hx, hy, -55);
     }
     glEnd();
-    // Right faint hills
-    glColor3f(0.25f * diveBlend + 0.04f, 0.28f * diveBlend + 0.03f, 0.30f * diveBlend);
+    // Near right point: darker green slope
     glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(10, 0, -58);
-    for (int i = 0; i <= 8; i++) {
-        float t = i / 8.0f;
-        glVertex3f(10 + t * 70.0f, 1.6f + sin(t * 12.0f) * 0.7f, -58);
+    glVertex3f(8, 0, -57);
+    for (int i = 0; i <= 10; i++) {
+        float t = i / 10.0f;
+        float hx = 8 + t * 72.0f;
+        float hy = 1.7f + sin(t * 12.0f) * 0.7f + sin(t * 29.0f) * 0.3f;
+        float shade = 0.85f + 0.15f * sin(t * 27.0f + 2.0f);
+        glColor3f((0.22f * diveBlend + 0.04f) * shade,
+                  (0.30f * diveBlend + 0.04f) * shade,
+                  (0.22f * diveBlend + 0.03f) * shade);
+        glVertex3f(hx, hy, -57);
+    }
+    glEnd();
+    // Vegetation speckle dots on near hills
+    glPointSize(2.0f);
+    glBegin(GL_POINTS);
+    for (int i = 0; i < 120; i++) {
+        float t = (i * 0.731f) - (int)(i * 0.731f);
+        float hx = -78 + t * 120.0f;
+        float hh = 0.4f + ((i * 37) % 100) / 100.0f * 1.6f;
+        glColor3f(0.16f * diveBlend + 0.03f, 0.28f * diveBlend + 0.03f, 0.12f * diveBlend + 0.02f);
+        glVertex3f(hx, hh, -54.5f);
     }
     glEnd();
     glPopMatrix();
@@ -879,22 +909,62 @@ void drawClouds() {
     if (diveBlend <= 0) return;
 
     glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     for (size_t i = 0; i < clouds.size(); i++) {
         glPushMatrix();
         float cx = clouds[i].x + sin(introTimer * 0.001f + i) * 0.5f;
         glTranslatef(cx, clouds[i].y, clouds[i].z);
-        glColor4f(1.0f, 1.0f, 1.0f, 0.7f * diveBlend);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glScalef(clouds[i].scale * 2.0f, clouds[i].scale * 0.5f, clouds[i].scale);
+        // Natural: sun-side puffs glow warm, shadow side cool gray.
+        // Warmth fades with distance from sunset side (-X).
+        float warm = 1.0f - (cx + 30.0f) / 60.0f;
+        if (warm < 0) warm = 0; if (warm > 1) warm = 1;
+        float s = clouds[i].scale;
+        // Darker flat base (cloud shadow)
+        glColor4f(0.55f + warm * 0.25f, 0.50f + warm * 0.15f, 0.55f, 0.55f * diveBlend);
+        glPushMatrix();
+        glScalef(s * 2.2f, s * 0.35f, s * 1.0f);
+        glTranslatef(0, -0.25f, 0);
         drawSphere(1.0f, 12, 8);
-        glTranslatef(0.8f, 0, 0.2f);
-        drawSphere(0.7f, 10, 6);
-        glTranslatef(-1.6f, 0, -0.1f);
-        drawSphere(0.8f, 10, 6);
-        glDisable(GL_BLEND);
+        glPopMatrix();
+        // Warm lit mid
+        glColor4f(1.0f, 0.72f + warm * 0.1f, 0.55f + warm * 0.15f, 0.65f * diveBlend);
+        glPushMatrix();
+        glScalef(s * 2.0f, s * 0.5f, s);
+        drawSphere(1.0f, 12, 8);
+        glPopMatrix();
+        // Bright white top catching sun
+        glColor4f(1.0f, 0.97f, 0.94f, 0.7f * diveBlend);
+        glPushMatrix();
+        glTranslatef(-s * 0.2f, s * 0.35f, 0);
+        glScalef(s * 1.4f, s * 0.35f, s * 0.7f);
+        drawSphere(1.0f, 10, 6);
+        glPopMatrix();
+        // Side puffs
+        glColor4f(1.0f, 0.85f, 0.70f, 0.6f * diveBlend);
+        glPushMatrix();
+        glTranslatef(s * 0.9f, -s * 0.05f, s * 0.15f);
+        glScalef(s * 0.8f, s * 0.35f, s * 0.6f);
+        drawSphere(1.0f, 10, 6);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(-s * 1.0f, -s * 0.05f, -s * 0.1f);
+        glScalef(s * 0.9f, s * 0.38f, s * 0.65f);
+        drawSphere(1.0f, 10, 6);
+        glPopMatrix();
         glPopMatrix();
     }
+    // Thin pink cirrus streaks near horizon (like ref)
+    glColor4f(1.0f, 0.65f, 0.5f, 0.30f * diveBlend);
+    for (int k = 0; k < 5; k++) {
+        float ky = 9.0f + k * 1.8f;
+        glPushMatrix();
+        glTranslatef(-10.0f + k * 4.0f, ky, -55.0f);
+        glScalef(14.0f - k * 1.5f, 0.28f, 1.0f);
+        drawSphere(1.0f, 10, 6);
+        glPopMatrix();
+    }
+    glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
 }
 
@@ -918,15 +988,26 @@ void drawOceanSurface() {
             float x1 = (i + 1) * gridStep;
             float z1 = (j + 1) * gridStep;
 
-            float w00 = sin(x0 * 0.3f + introTimer * 0.002f) * 0.15f + cos(z0 * 0.2f + introTimer * 0.0015f) * 0.1f;
-            float w10 = sin(x1 * 0.3f + introTimer * 0.002f) * 0.15f + cos(z0 * 0.2f + introTimer * 0.0015f) * 0.1f;
-            float w01 = sin(x0 * 0.3f + introTimer * 0.002f) * 0.15f + cos(z1 * 0.2f + introTimer * 0.0015f) * 0.1f;
-            float w11 = sin(x1 * 0.3f + introTimer * 0.002f) * 0.15f + cos(z1 * 0.2f + introTimer * 0.0015f) * 0.1f;
+            float w00 = sin(x0 * 0.35f + introTimer * 0.0022f) * 0.16f + cos(z0 * 0.23f + introTimer * 0.0016f) * 0.11f + sin((x0 + z0) * 0.12f + introTimer * 0.0009f) * 0.08f;
+            float w10 = sin(x1 * 0.35f + introTimer * 0.0022f) * 0.16f + cos(z0 * 0.23f + introTimer * 0.0016f) * 0.11f + sin((x1 + z0) * 0.12f + introTimer * 0.0009f) * 0.08f;
+            float w01 = sin(x0 * 0.35f + introTimer * 0.0022f) * 0.16f + cos(z1 * 0.23f + introTimer * 0.0016f) * 0.11f + sin((x0 + z1) * 0.12f + introTimer * 0.0009f) * 0.08f;
+            float w11 = sin(x1 * 0.35f + introTimer * 0.0022f) * 0.16f + cos(z1 * 0.23f + introTimer * 0.0016f) * 0.11f + sin((x1 + z1) * 0.12f + introTimer * 0.0009f) * 0.08f;
 
-            float waterAlpha = 0.7f * diveBlend + 0.3f;
-            float r = 0.1f * diveBlend + 0.02f;
-            float g = 0.3f * diveBlend + 0.05f;
-            float b = 0.7f * diveBlend + 0.15f;
+            float waterAlpha = 0.55f * diveBlend + 0.45f;
+            // Natural day water: deep blue-green troughs, lighter crests
+            float hAvg = (w00 + w11) * 0.5f; // -0.35..0.35
+            float crest = (hAvg + 0.35f) / 0.7f; // 0..1
+            float r = (0.04f + crest * 0.10f) * diveBlend + 0.01f;
+            float g = (0.24f + crest * 0.16f) * diveBlend + 0.05f;
+            float b = (0.44f + crest * 0.20f) * diveBlend + 0.14f;
+            // Sun glitter lane near sunset side (-X, toward sun)
+            float lane = 1.0f - fabs((x0 + 26.0f) / 22.0f);
+            if (lane < 0) lane = 0;
+            float glint = pow(sin(x0 * 2.1f + introTimer * 0.01f) * sin(z0 * 1.7f - introTimer * 0.008f), 8.0f);
+            if (glint < 0) glint = 0;
+            r += lane * (0.25f + glint * 0.6f) * diveBlend;
+            g += lane * (0.15f + glint * 0.4f) * diveBlend;
+            b += lane * (0.05f + glint * 0.2f) * diveBlend;
 
             glColor4f(r, g, b, waterAlpha);
             glVertex3f(x0, surfaceY + w00, z0);
@@ -937,9 +1018,9 @@ void drawOceanSurface() {
     }
     glEnd();
 
-    // Underwater floor
-    float floorY = -10.0f;
-    glColor3f(0.15f, 0.12f, 0.08f);
+    // Natural seabed: rippled sand with drifting caustic light patches
+    float floorY = -16.0f;
+    glColor3f(0.35f, 0.30f, 0.22f);
     glBegin(GL_QUADS);
     for (int i = -gridSize; i < gridSize; i++) {
         for (int j = -gridSize; j < gridSize; j++) {
@@ -947,8 +1028,11 @@ void drawOceanSurface() {
             float z0 = j * gridStep;
             float x1 = (i + 1) * gridStep;
             float z1 = (j + 1) * gridStep;
-            float h = sin(x0 * 0.5f) * cos(z0 * 0.4f) * 0.3f;
-            glColor3f(0.15f + h * 0.05f, 0.12f + h * 0.03f, 0.08f);
+            float h = sin(x0 * 0.45f) * cos(z0 * 0.38f) * 0.45f + sin((x0 + z0) * 0.15f) * 0.25f;
+            float ca = sin(x0 * 0.8f + introTimer * 0.0012f) * cos(z0 * 0.7f - introTimer * 0.001f);
+            ca = ca * ca * (1.0f - diveTransition * 0.7f); // caustics fade with depth
+            float sandTone = 0.9f + h * 0.25f;
+            glColor3f((0.36f * sandTone + ca * 0.18f), (0.31f * sandTone + ca * 0.16f), (0.22f * sandTone + ca * 0.10f));
             glVertex3f(x0, floorY + h, z0);
             glVertex3f(x1, floorY + sin(x1 * 0.5f) * cos(z0 * 0.4f) * 0.3f, z0);
             glVertex3f(x1, floorY + sin(x1 * 0.5f) * cos(z1 * 0.4f) * 0.3f, z1);
@@ -985,7 +1069,7 @@ void drawSeaweed() {
     for (size_t i = 0; i < seaweeds.size(); i++) {
         glPushMatrix();
         float sway = sin(introTimer * 0.003f + seaweeds[i].phase) * 0.2f;
-        glTranslatef(seaweeds[i].x, -10.0f, seaweeds[i].z);
+        glTranslatef(seaweeds[i].x, -16.0f, seaweeds[i].z);
 
         int segments = 8;
         float segH = seaweeds[i].height / segments;
@@ -1149,6 +1233,50 @@ void drawParticles() {
     }
 
     glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+}
+
+void drawLightRays() {
+    // Underwater god-rays like 2nd ref: slanted translucent shafts
+    // from the bright surface, swaying gently. Additive blending.
+    if (diveTransition < 0.25f) return;
+    float strength = (diveTransition - 0.25f) / 0.75f;
+    if (strength > 1) strength = 1;
+    // Fade rays as the boat goes very deep
+    float depthFade = 1.0f - fabs(sub.depth - 8.0f) / 25.0f;
+    if (depthFade < 0.15f) depthFade = 0.15f;
+    float a = 0.10f * strength * depthFade;
+
+    glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    float t = introTimer * 0.0006f;
+    for (int i = 0; i < 7; i++) {
+        float rx = -14.0f + i * 5.5f + sin(t * 1.3f + i * 2.1f) * 1.2f;
+        float rz = -12.0f + (i % 3) * 7.0f;
+        float topW = 2.2f + (i % 3) * 0.8f;
+        float botW = 5.5f + (i % 4) * 1.2f;
+        float sway = sin(t * 0.9f + i) * 1.5f;
+        glBegin(GL_QUADS);
+        glColor4f(0.45f, 0.75f, 0.95f, 0.0f);
+        glVertex3f(rx - topW, 0.5f, rz);
+        glVertex3f(rx + topW, 0.5f, rz);
+        glColor4f(0.45f, 0.75f, 0.95f, a);
+        glVertex3f(rx + botW + sway, -16.0f, rz);
+        glVertex3f(rx - botW + sway, -16.0f, rz);
+        glEnd();
+    }
+    // Bright surface sheet seen from below
+    glBegin(GL_QUADS);
+    glColor4f(0.35f, 0.65f, 0.9f, 0.35f * strength);
+    glVertex3f(-40, 0.4f, -40);
+    glVertex3f(40, 0.4f, -40);
+    glVertex3f(40, 0.4f, 40);
+    glVertex3f(-40, 0.4f, 40);
+    glEnd();
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
     glEnable(GL_LIGHTING);
 }
 
@@ -1548,9 +1676,10 @@ void setupFog() {
 
     glEnable(GL_FOG);
     glFogi(GL_FOG_MODE, GL_EXP2);
-    GLfloat fogColor[] = { 0.0f, 0.05f * diveBlend, 0.15f * diveBlend, 1.0f };
+    // Natural deep-sea blue, not black: shallow teal -> deep navy
+    GLfloat fogColor[] = { 0.02f * diveBlend, 0.22f * diveBlend + 0.01f, 0.38f * diveBlend + 0.02f, 1.0f };
     glFogfv(GL_FOG_COLOR, fogColor);
-    glFogf(GL_FOG_DENSITY, 0.03f * diveBlend);
+    glFogf(GL_FOG_DENSITY, 0.028f * diveBlend);
     glHint(GL_FOG_HINT, GL_DONT_CARE);
 }
 
@@ -1704,7 +1833,7 @@ void updateSubmarine() {
     if (diveTransition > 0.2f && rand() % 100 < 5) {
         Bubble b;
         b.x = (rand() % 200 - 100) * 0.3f;
-        b.y = -10.0f + (rand() % 100) * 0.1f;
+        b.y = -16.0f + (rand() % 100) * 0.12f;
         b.z = (rand() % 200 - 100) * 0.3f;
         b.speed = 0.01f + (rand() % 100) * 0.0002f;
         b.size = 0.02f + (rand() % 100) * 0.0008f;
@@ -1964,9 +2093,11 @@ void drawIntroOverlay() {
 void display() {
     // Sky-blue background on surface, dark blue when deep (never black)
     float db = diveTransition;
-    glClearColor(0.52f * (1 - db) + 0.01f * db,
-                 0.74f * (1 - db) + 0.06f * db,
-                 0.94f * (1 - db) + 0.16f * db, 1.0f);
+    // Day sky blue -> shallow teal -> deep navy (matches ref 2, never black)
+    float deepK = db * db; // ease into depth
+    glClearColor(0.52f * (1 - db) + 0.06f * db * (1 - deepK) + 0.01f * deepK,
+                 0.74f * (1 - db) + 0.35f * db * (1 - deepK) + 0.08f * deepK,
+                 0.94f * (1 - db) + 0.55f * db * (1 - deepK) + 0.22f * deepK, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
@@ -1991,6 +2122,7 @@ void display() {
     }
 
     if (diveTransition > 0.1f) {
+        drawLightRays();
         drawSeaweed();
         drawRocks();
         drawCoral();
@@ -2072,7 +2204,7 @@ void keyboardDown(unsigned char key, int x, int y) {
             gameState = STATE_MENU;
             diveTimer = 6000.0f;
             diveTransition = 1.0f;
-            sub.y = -10.0f;
+            sub.y = -13.0f;
         }
         return;
     }
