@@ -214,6 +214,139 @@ void drawTorus(float inner, float outer, int sides = 16, int rings = 32) {
 }
 
 // ============================================================
+// PROCEDURAL TEXTURES (realistic sky / water / metal / sand,
+// soft cloud sprites — generated in code, no image files needed)
+// ============================================================
+GLuint texSky = 0, texWater = 0, texSand = 0, texHull = 0, texPuff = 0;
+
+static unsigned int hashNoise(int x, int y, int seed) {
+    unsigned int h = (unsigned int)(x * 374761393 + y * 668265263 + seed * 1442695041);
+    h = (h ^ (h >> 13)) * 1274126177u;
+    return h ^ (h >> 16);
+}
+static float noise01(int x, int y, int seed) {
+    return (hashNoise(x, y, seed) & 1023) / 1023.0f;
+}
+static float smoothNoise(float x, float y, int seed) {
+    int xi = (int)floor(x), yi = (int)floor(y);
+    float xf = x - xi, yf = y - yi;
+    float u = xf * xf * (3 - 2 * xf), v = yf * yf * (3 - 2 * yf);
+    float a = noise01(xi, yi, seed), b = noise01(xi + 1, yi, seed);
+    float c = noise01(xi, yi + 1, seed), d = noise01(xi + 1, yi + 1, seed);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+}
+static GLuint uploadTexture(int w, int h, unsigned char* px, bool rgba, bool repeat) {
+    GLuint t; glGenTextures(1, &t);
+    glBindTexture(GL_TEXTURE_2D, t);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, repeat ? GL_REPEAT : GL_CLAMP);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, repeat ? GL_REPEAT : GL_CLAMP);
+    glTexImage2D(GL_TEXTURE_2D, 0, rgba ? GL_RGBA : GL_RGB, w, h, 0,
+                 rgba ? GL_RGBA : GL_RGB, GL_UNSIGNED_BYTE, px);
+    return t;
+}
+
+void initTextures() {
+    // ---- Sky dome gradient: zenith blue -> mid steel -> warm horizon ----
+    {
+        const int W = 64, H = 256;
+        static unsigned char px[64 * 256 * 3];
+        for (int y = 0; y < H; y++) {
+            float v = y / (float)(H - 1); // 0 bottom, 1 top
+            float r, g, b;
+            if (v < 0.42f)      { r = 18; g = 38; b = 78; }
+            else if (v < 0.52f) { float k = (v - 0.42f) / 0.10f; r = 18 + 237 * k; g = 38 + 138 * k; b = 78 + 32 * k; }
+            else if (v < 0.60f) { float k = (v - 0.52f) / 0.08f; r = 255 - 55 * k; g = 176 + 14 * k; b = 110 + 90 * k; }
+            else if (v < 0.78f) { float k = (v - 0.60f) / 0.18f; r = 200 - 110 * k; g = 190 - 60 * k; b = 200 + 10 * k; }
+            else                { float k = (v - 0.78f) / 0.22f; r = 90 - 62 * k; g = 130 - 68 * k; b = 210 - 68 * k; }
+            for (int x = 0; x < W; x++) {
+                int o = (y * W + x) * 3;
+                px[o] = (unsigned char)r; px[o + 1] = (unsigned char)g; px[o + 2] = (unsigned char)b;
+            }
+        }
+        texSky = uploadTexture(W, H, px, false, false);
+    }
+    // ---- Water detail (near-white multiplier: keeps baked color, adds grain) ----
+    {
+        const int W = 128, H = 128;
+        static unsigned char px[128 * 128 * 3];
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+            float n = smoothNoise(x * 0.15f, y * 0.15f, 7) * 0.6f + smoothNoise(x * 0.5f, y * 0.5f, 21) * 0.4f;
+            float v = 218 + n * 37;
+            float patch = smoothNoise(x * 0.05f, y * 0.05f, 99);
+            if (patch < 0.35f) v *= 0.86f; // darker depth patches
+            int o = (y * W + x) * 3;
+            px[o] = px[o + 1] = px[o + 2] = (unsigned char)(v > 255 ? 255 : v);
+        }
+        texWater = uploadTexture(W, H, px, false, true);
+    }
+    // ---- Sand: warm tan speckle + pebbles ----
+    {
+        const int W = 128, H = 128;
+        static unsigned char px[128 * 128 * 3];
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+            float n = noise01(x, y, 5);
+            float r = 206 + (n - 0.5f) * 36, g = 178 + (n - 0.5f) * 32, b = 138 + (n - 0.5f) * 26;
+            if (noise01(x / 4, y / 4, 6) > 0.93f) { r *= 0.62f; g *= 0.60f; b *= 0.58f; } // pebble
+            if (noise01(x / 6, y / 6, 8) > 0.95f) { r = 235; g = 225; b = 205; } // shell bit
+            int o = (y * W + x) * 3;
+            px[o] = (unsigned char)r; px[o + 1] = (unsigned char)g; px[o + 2] = (unsigned char)b;
+        }
+        texSand = uploadTexture(W, H, px, false, true);
+    }
+    // ---- Hull metal: bright base (multiplier) + panel lines + rivets + grain ----
+    {
+        const int W = 128, H = 128;
+        static unsigned char px[128 * 128 * 3];
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+            float v = 218 + (noise01(x, y, 11) - 0.5f) * 14;
+            if (y % 21 == 0) v = 150; // plate seams
+            if (x % 42 == 0) v = 160;
+            if (y % 21 == 0 && x % 7 == 0) v = 120; // rivets
+            int o = (y * W + x) * 3;
+            px[o] = px[o + 1] = px[o + 2] = (unsigned char)v;
+        }
+        texHull = uploadTexture(W, H, px, false, true);
+    }
+    // ---- Soft puff sprite (clouds, sun glow, halos) ----
+    {
+        const int W = 64, H = 64;
+        static unsigned char px[64 * 64 * 4];
+        for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
+            float dx = (x - 32) / 32.0f, dy = (y - 32) / 32.0f;
+            float r = sqrt(dx * dx + dy * dy);
+            float n = smoothNoise(x * 0.3f, y * 0.3f, 33);
+            float a = 1.0f - r;
+            if (a < 0) a = 0;
+            a = pow(a, 1.6f) * (0.55f + 0.45f * n);
+            if (r > 0.95f) a = 0;
+            int o = (y * W + x) * 4;
+            px[o] = px[o + 1] = px[o + 2] = 255;
+            px[o + 3] = (unsigned char)(a * 255);
+        }
+        texPuff = uploadTexture(W, H, px, true, false);
+    }
+}
+
+// Camera-facing textured quad (for clouds / glows). Caller binds texture,
+// enables blending and sets color. Must be called after camera is set.
+void drawBillboard(float x, float y, float z, float w, float h) {
+    float m[16];
+    glGetFloatv(GL_MODELVIEW_MATRIX, m);
+    float rx = m[0], ry = m[4], rz = m[8];
+    float ux = m[1], uy = m[5], uz = m[9];
+    float hx = rx * w * 0.5f, hy = ry * w * 0.5f, hz = rz * w * 0.5f;
+    float vx = ux * h * 0.5f, vy = uy * h * 0.5f, vz = uz * h * 0.5f;
+    glBegin(GL_QUADS);
+    glTexCoord2f(0, 0); glVertex3f(x - hx - vx, y - hy - vy, z - hz - vz);
+    glTexCoord2f(1, 0); glVertex3f(x + hx - vx, y + hy - vy, z + hz - vz);
+    glTexCoord2f(1, 1); glVertex3f(x + hx + vx, y + hy + vy, z + hz + vz);
+    glTexCoord2f(0, 1); glVertex3f(x - hx + vx, y - hy + vy, z - hz + vz);
+    glEnd();
+}
+
+// ============================================================
 // INITIALIZATION
 // ============================================================
 void initSubmarine() {
@@ -693,7 +826,11 @@ void drawFullSubmarine() {
     glRotatef(sub.pitch, 0, 0, 1);
     glRotatef(sub.roll, 1, 0, 0);
 
+    // Brushed-metal plating texture on the hull (falls back to plain colors)
+    bool hullTex = (texHull != 0);
+    if (hullTex) { glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texHull); }
     drawSubmarineBody();
+    if (hullTex) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
     drawPropeller();
     drawSubmarineHeadlights();
 
@@ -710,37 +847,32 @@ void drawSky() {
     if (diveBlend <= 0) return;
 
     glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
-    // Back wall (the one the intro camera looks at)
-    glBegin(GL_QUADS);
-    glColor3f(0.25f, 0.50f, 0.95f); glVertex3f(-120, 45, -80);
-    glColor3f(0.25f, 0.50f, 0.95f); glVertex3f(120, 45, -80);
-    glColor3f(1.00f, 0.62f, 0.30f); glVertex3f(120, 0, -80);
-    glColor3f(1.00f, 0.62f, 0.30f); glVertex3f(-120, 0, -80);
-    glEnd();
-    // Left wall (warm sunset side)
-    glBegin(GL_QUADS);
-    glColor3f(0.30f, 0.50f, 0.90f); glVertex3f(-80, 45, 80);
-    glColor3f(0.30f, 0.50f, 0.90f); glVertex3f(-80, 45, -80);
-    glColor3f(1.00f, 0.60f, 0.28f); glVertex3f(-80, 0, -80);
-    glColor3f(1.00f, 0.60f, 0.28f); glVertex3f(-80, 0, 80);
-    glEnd();
-    // Right wall (blue day side)
-    glBegin(GL_QUADS);
-    glColor3f(0.25f, 0.50f, 0.95f); glVertex3f(80, 45, -80);
-    glColor3f(0.25f, 0.50f, 0.95f); glVertex3f(80, 45, 80);
-    glColor3f(0.55f, 0.72f, 0.95f); glVertex3f(80, 0, 80);
-    glColor3f(0.55f, 0.72f, 0.95f); glVertex3f(80, 0, -80);
-    glEnd();
-    // Top cap so looking up is never black
-    glBegin(GL_QUADS);
-    glColor3f(0.25f, 0.50f, 0.95f);
-    glVertex3f(-120, 45, -80);
-    glVertex3f(-120, 45, 80);
-    glVertex3f(120, 45, 80);
-    glVertex3f(120, 45, -80);
-    glEnd();
-    glEnable(GL_DEPTH_TEST);
+    if (texSky) {
+        // Realistic gradient dome (textured, surrounds the whole scene)
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texSky);
+        glColor3f(diveBlend, diveBlend, diveBlend);
+        GLUquadric* skyQ = gluNewQuadric();
+        gluQuadricTexture(skyQ, GL_TRUE);
+        gluQuadricNormals(skyQ, GLU_NONE);
+        glPushMatrix();
+        glRotatef(-90, 1, 0, 0); // put texture horizon at eye level
+        gluSphere(skyQ, 230, 28, 18);
+        glPopMatrix();
+        gluDeleteQuadric(skyQ);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
+    } else {
+        // Fallback flat sky if textures unavailable
+        glDisable(GL_DEPTH_TEST);
+        glBegin(GL_QUADS);
+        glColor3f(0.25f, 0.50f, 0.95f); glVertex3f(-120, 45, -80);
+        glColor3f(0.25f, 0.50f, 0.95f); glVertex3f(120, 45, -80);
+        glColor3f(1.00f, 0.62f, 0.30f); glVertex3f(120, 0, -80);
+        glColor3f(1.00f, 0.62f, 0.30f); glVertex3f(-120, 0, -80);
+        glEnd();
+        glEnable(GL_DEPTH_TEST);
+    }
     glEnable(GL_LIGHTING);
 }
 
@@ -752,16 +884,25 @@ void drawSun() {
     glDisable(GL_LIGHTING);
     glPushMatrix();
     glTranslatef(-38.0f, 5.5f, -45.0f);
-    glColor3f(1.0f * diveBlend, 0.85f * diveBlend, 0.55f * diveBlend);
-    drawSphere(3.0f, 18, 14);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glColor4f(1.0f, 0.6f, 0.25f, 0.28f * diveBlend);
-    drawSphere(6.0f, 18, 14);
-    glColor4f(1.0f, 0.45f, 0.2f, 0.12f * diveBlend);
-    drawSphere(10.0f, 18, 14);
-    glDisable(GL_BLEND);
+    glColor3f(1.0f * diveBlend, 0.88f * diveBlend, 0.66f * diveBlend);
+    drawSphere(2.6f, 18, 14);
     glPopMatrix();
+    // Layered photographic glow sprites around the sun disc
+    if (texPuff) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texPuff);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+        glColor4f(1.0f, 0.85f, 0.55f, 0.55f * diveBlend);
+        drawBillboard(-38.0f, 5.5f, -45.0f, 16.0f, 16.0f);
+        glColor4f(1.0f, 0.60f, 0.28f, 0.30f * diveBlend);
+        drawBillboard(-38.0f, 5.5f, -45.0f, 30.0f, 30.0f);
+        glColor4f(1.0f, 0.45f, 0.22f, 0.14f * diveBlend);
+        drawBillboard(-38.0f, 5.5f, -45.0f, 55.0f, 55.0f);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_BLEND);
+    }
     // Sun glitter path on water toward camera
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -909,62 +1050,43 @@ void drawClouds() {
     if (diveBlend <= 0) return;
 
     glDisable(GL_LIGHTING);
+    glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    for (size_t i = 0; i < clouds.size(); i++) {
-        glPushMatrix();
-        float cx = clouds[i].x + sin(introTimer * 0.001f + i) * 0.5f;
-        glTranslatef(cx, clouds[i].y, clouds[i].z);
-        // Natural: sun-side puffs glow warm, shadow side cool gray.
-        // Warmth fades with distance from sunset side (-X).
-        float warm = 1.0f - (cx + 30.0f) / 60.0f;
-        if (warm < 0) warm = 0; if (warm > 1) warm = 1;
-        float s = clouds[i].scale;
-        // Darker flat base (cloud shadow)
-        glColor4f(0.55f + warm * 0.25f, 0.50f + warm * 0.15f, 0.55f, 0.55f * diveBlend);
-        glPushMatrix();
-        glScalef(s * 2.2f, s * 0.35f, s * 1.0f);
-        glTranslatef(0, -0.25f, 0);
-        drawSphere(1.0f, 12, 8);
-        glPopMatrix();
-        // Warm lit mid
-        glColor4f(1.0f, 0.72f + warm * 0.1f, 0.55f + warm * 0.15f, 0.65f * diveBlend);
-        glPushMatrix();
-        glScalef(s * 2.0f, s * 0.5f, s);
-        drawSphere(1.0f, 12, 8);
-        glPopMatrix();
-        // Bright white top catching sun
-        glColor4f(1.0f, 0.97f, 0.94f, 0.7f * diveBlend);
-        glPushMatrix();
-        glTranslatef(-s * 0.2f, s * 0.35f, 0);
-        glScalef(s * 1.4f, s * 0.35f, s * 0.7f);
-        drawSphere(1.0f, 10, 6);
-        glPopMatrix();
-        // Side puffs
-        glColor4f(1.0f, 0.85f, 0.70f, 0.6f * diveBlend);
-        glPushMatrix();
-        glTranslatef(s * 0.9f, -s * 0.05f, s * 0.15f);
-        glScalef(s * 0.8f, s * 0.35f, s * 0.6f);
-        drawSphere(1.0f, 10, 6);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(-s * 1.0f, -s * 0.05f, -s * 0.1f);
-        glScalef(s * 0.9f, s * 0.38f, s * 0.65f);
-        drawSphere(1.0f, 10, 6);
-        glPopMatrix();
-        glPopMatrix();
-    }
-    // Thin pink cirrus streaks near horizon (like ref)
-    glColor4f(1.0f, 0.65f, 0.5f, 0.30f * diveBlend);
-    for (int k = 0; k < 5; k++) {
-        float ky = 9.0f + k * 1.8f;
-        glPushMatrix();
-        glTranslatef(-10.0f + k * 4.0f, ky, -55.0f);
-        glScalef(14.0f - k * 1.5f, 0.28f, 1.0f);
-        drawSphere(1.0f, 10, 6);
-        glPopMatrix();
+    if (texPuff) {
+        glEnable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, texPuff);
+        for (size_t i = 0; i < clouds.size(); i++) {
+            float cx = clouds[i].x + sin(introTimer * 0.001f + i) * 0.5f;
+            float cy = clouds[i].y, cz = clouds[i].z;
+            float warm = 1.0f - (cx + 30.0f) / 60.0f;
+            if (warm < 0) warm = 0; if (warm > 1) warm = 1;
+            float s = clouds[i].scale;
+            // Soft shadow base
+            glColor4f(0.52f + warm * 0.22f, 0.48f + warm * 0.14f, 0.55f, 0.50f * diveBlend);
+            drawBillboard(cx, cy - s * 0.25f, cz, s * 5.2f, s * 1.5f);
+            // Warm sunlit body
+            glColor4f(1.0f, 0.74f + warm * 0.08f, 0.58f + warm * 0.12f, 0.60f * diveBlend);
+            drawBillboard(cx, cy, cz, s * 4.6f, s * 1.7f);
+            // Bright top edge
+            glColor4f(1.0f, 0.96f, 0.92f, 0.65f * diveBlend);
+            drawBillboard(cx - s * 0.3f, cy + s * 0.45f, cz, s * 3.0f, s * 0.9f);
+            // Flanking puffs
+            glColor4f(1.0f, 0.84f, 0.70f, 0.5f * diveBlend);
+            drawBillboard(cx + s * 1.8f, cy - s * 0.1f, cz, s * 2.0f, s * 0.9f);
+            drawBillboard(cx - s * 2.0f, cy - s * 0.1f, cz, s * 2.2f, s * 1.0f);
+        }
+        // Thin pink cirrus streaks near horizon
+        glColor4f(1.0f, 0.62f, 0.48f, 0.28f * diveBlend);
+        for (int k = 0; k < 5; k++) {
+            float ky = 9.0f + k * 1.8f;
+            drawBillboard(-10.0f + k * 4.0f, ky, -55.0f, 26.0f - k * 2.5f, 1.1f);
+        }
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glDisable(GL_TEXTURE_2D);
     }
     glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
     glEnable(GL_LIGHTING);
 }
 
@@ -977,8 +1099,14 @@ void drawOceanSurface() {
     float gridStep = 2.0f;
     float surfaceY = 0.0f;
 
+    // Water is hand-shaded (no GL lighting: it has no normals) so the
+    // gradient + sun glitter read photographic, with a drifting detail texture.
+    glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    bool waterTex = (texWater != 0);
+    if (waterTex) { glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texWater); }
+    float uvDrift = introTimer * 0.00003f;
 
     glBegin(GL_QUADS);
     for (int i = -gridSize; i < gridSize; i++) {
@@ -1010,17 +1138,27 @@ void drawOceanSurface() {
             b += lane * (0.05f + glint * 0.2f) * diveBlend;
 
             glColor4f(r, g, b, waterAlpha);
+            if (waterTex) glTexCoord2f(x0 * 0.06f + uvDrift, z0 * 0.06f);
             glVertex3f(x0, surfaceY + w00, z0);
+            if (waterTex) glTexCoord2f(x1 * 0.06f + uvDrift, z0 * 0.06f);
             glVertex3f(x1, surfaceY + w10, z0);
+            if (waterTex) glTexCoord2f(x1 * 0.06f + uvDrift, z1 * 0.06f);
             glVertex3f(x1, surfaceY + w11, z1);
+            if (waterTex) glTexCoord2f(x0 * 0.06f + uvDrift, z1 * 0.06f);
             glVertex3f(x0, surfaceY + w01, z1);
         }
     }
     glEnd();
+    if (waterTex) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
 
-    // Natural seabed: rippled sand with drifting caustic light patches
+    // Natural seabed: textured rippled sand, properly lit with normals,
+    // plus drifting caustic light patches
     float floorY = -16.0f;
-    glColor3f(0.35f, 0.30f, 0.22f);
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+    bool sandTex = (texSand != 0);
+    if (sandTex) { glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texSand); }
+    glColor3f(1.0f, 0.96f, 0.88f);
     glBegin(GL_QUADS);
     for (int i = -gridSize; i < gridSize; i++) {
         for (int j = -gridSize; j < gridSize; j++) {
@@ -1032,15 +1170,20 @@ void drawOceanSurface() {
             float ca = sin(x0 * 0.8f + introTimer * 0.0012f) * cos(z0 * 0.7f - introTimer * 0.001f);
             ca = ca * ca * (1.0f - diveTransition * 0.7f); // caustics fade with depth
             float sandTone = 0.9f + h * 0.25f;
-            glColor3f((0.36f * sandTone + ca * 0.18f), (0.31f * sandTone + ca * 0.16f), (0.22f * sandTone + ca * 0.10f));
+            glColor3f((0.72f * sandTone + ca * 0.28f), (0.64f * sandTone + ca * 0.24f), (0.47f * sandTone + ca * 0.15f));
+            glNormal3f(0, 1, 0);
+            if (sandTex) glTexCoord2f(x0 * 0.08f, z0 * 0.08f);
             glVertex3f(x0, floorY + h, z0);
+            if (sandTex) glTexCoord2f(x1 * 0.08f, z0 * 0.08f);
             glVertex3f(x1, floorY + sin(x1 * 0.5f) * cos(z0 * 0.4f) * 0.3f, z0);
+            if (sandTex) glTexCoord2f(x1 * 0.08f, z1 * 0.08f);
             glVertex3f(x1, floorY + sin(x1 * 0.5f) * cos(z1 * 0.4f) * 0.3f, z1);
+            if (sandTex) glTexCoord2f(x0 * 0.08f, z1 * 0.08f);
             glVertex3f(x0, floorY + h, z1);
         }
     }
     glEnd();
-    glDisable(GL_BLEND);
+    if (sandTex) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
     glPopMatrix();
 }
 
@@ -2395,6 +2538,7 @@ int main(int argc, char** argv) {
     initSubmarine();
     initCamera();
     initEnvironment();
+    initTextures();
     setupLighting();
 
     glutDisplayFunc(display);
