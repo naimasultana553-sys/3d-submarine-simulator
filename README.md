@@ -1,3 +1,5 @@
+﻿> Built by [Naima Sultana](https://github.com/naimasultana553-sys) | CSE Student, Bangladesh | [LinkedIn](https://www.linkedin.com/in/naima-sultana-76a678395)
+
 # 🚢 3D Submarine Simulator — OpenGL / freeGLUT
 
 ![OpenGL](https://img.shields.io/badge/OpenGL-fixed%20pipeline-blue)
@@ -212,3 +214,4 @@ Collision warning text · sonar minimap · treasure/ring checkpoints · engine a
 
 ## 📄 License
 MIT — free for coursework, portfolios and remixes.
+
