@@ -83,10 +83,6 @@ int menuSelection = 0;
 bool missionStarted = false;
 float missionTimer = 0.0f;
 
-// Searchlight effective range (m): how far ahead the boat can see.
-// The spotlight falloff, the visible cone and the sonar screen all use it.
-const float HEADLIGHT_RANGE = 25.0f;
-
 // ============================================================
 // FISH / MARINE LIFE
 // ============================================================
@@ -777,13 +773,12 @@ void drawPropeller() {
 void drawSubmarineHeadlights() {
     if (!sub.headlightsOn) return;
 
-    // Twin searchlights merged into one forward spotlight whose falloff
-    // reaches ~HEADLIGHT_RANGE: bright near the bow, gone beyond range.
+    // Headlight glow
     glEnable(GL_LIGHT2);
-    GLfloat pos2[] = { 3.1f, 0.1f, 0.0f, 1.0f };
+    GLfloat pos2[] = { 3.0f, 0.0f, 0.0f, 1.0f };
     GLfloat dir2[] = { 1.0f, 0.0f, 0.0f };
-    GLfloat amb2[] = { 0.08f, 0.08f, 0.05f, 1.0f };
-    GLfloat diff2[] = { 1.2f, 1.1f, 0.9f, 1.0f };
+    GLfloat amb2[] = { 0.1f, 0.1f, 0.05f, 1.0f };
+    GLfloat diff2[] = { 1.0f, 0.95f, 0.8f, 1.0f };
     GLfloat spec2[] = { 1.0f, 1.0f, 0.9f, 1.0f };
 
     glPushMatrix();
@@ -798,47 +793,29 @@ void drawSubmarineHeadlights() {
     glLightfv(GL_LIGHT2, GL_AMBIENT, amb2);
     glLightfv(GL_LIGHT2, GL_DIFFUSE, diff2);
     glLightfv(GL_LIGHT2, GL_SPECULAR, spec2);
-    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 26.0f);
-    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 6.0f);
-    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.4f);
-    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.10f);
-    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.012f);
+    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 30.0f);
+    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 8.0f);
+    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.5f);
+    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.08f);
+    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.01f);
 
-    // Visible beam: bright core + wide soft halo, sized to the range.
-    // Seen from outside AND through the cockpit front window.
+    // Visual light cones
     glPushMatrix();
     glTranslatef(sub.x, sub.y, sub.z);
     glRotatef(sub.yaw, 0, 1, 0);
     glRotatef(sub.pitch, 0, 0, 1);
 
-    glDisable(GL_LIGHTING);
-    glDisable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    // Outer halo: reaches most of the range, very faint
-    glColor4f(1.0f, 0.93f, 0.68f, 0.045f);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glColor4f(1.0f, 0.95f, 0.7f, 0.08f);
+
     glPushMatrix();
-    glTranslatef(3.1f, 0.1f, 0);
+    glTranslatef(3.0f, 0, 0);
     glRotatef(90, 0, 1, 0);
-    drawCone(5.4f, 14.0f, 16);
+    drawCone(1.5f, 5.0f, 16);
     glPopMatrix();
-    // Hot core: first third of the range
-    glColor4f(1.0f, 0.96f, 0.78f, 0.10f);
-    glPushMatrix();
-    glTranslatef(3.1f, 0.1f, 0);
-    glRotatef(90, 0, 1, 0);
-    drawCone(2.4f, 8.0f, 14);
-    glPopMatrix();
-    // Range tip marker: faint ring where the light dies out
-    glColor4f(1.0f, 0.9f, 0.6f, 0.10f);
-    glPushMatrix();
-    glTranslatef(3.1f + HEADLIGHT_RANGE * 0.55f, 0.1f, 0);
-    glRotatef(90, 0, 1, 0);
-    drawTorus(0.05f, 2.6f, 8, 24);
-    glPopMatrix();
+
     glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_LIGHTING);
     glPopMatrix();
 }
 
@@ -1449,577 +1426,217 @@ void drawLightRays() {
 // ============================================================
 // DRAW INTERIOR
 // ============================================================
-void drawSonarBlip(float x, float py, float pz, float s, float r, float g, float b) {
-    glColor3f(r, g, b);
-    glBegin(GL_QUADS);
-    glVertex3f(x, py - s, pz - s);
-    glVertex3f(x, py - s, pz + s);
-    glVertex3f(x, py + s, pz + s);
-    glVertex3f(x, py + s, pz - s);
-    glEnd();
-}
-
-void drawSonarMonitor() {
-    // Bezel
-    glPushMatrix();
-    glTranslatef(1.06f, 0.18f, 0);
-    glColor3f(0.07f, 0.08f, 0.09f);
-    glScalef(0.07f, 0.58f, 0.94f);
-    drawCube(1.0f);
-    glPopMatrix();
-
-    glDisable(GL_LIGHTING);
-    // Screen phosphor background (faces the pilot, -X)
-    float sx = 1.02f;
-    glColor3f(0.012f, 0.10f, 0.085f);
-    glBegin(GL_QUADS);
-    glVertex3f(sx, -0.06f, -0.40f);
-    glVertex3f(sx, -0.06f, 0.40f);
-    glVertex3f(sx, 0.42f, 0.40f);
-    glVertex3f(sx, 0.42f, -0.40f);
-    glEnd();
-
-    // Range rings + crosshair
-    float cx = 1.015f, cy0 = 0.18f;
-    glColor3f(0.05f, 0.45f, 0.35f);
-    for (int ring = 1; ring <= 2; ring++) {
-        float ry = 0.085f * ring, rz = 0.14f * ring;
-        glBegin(GL_LINE_LOOP);
-        for (int k = 0; k < 28; k++) {
-            float a = k / 28.0f * 2.0f * (float)PI;
-            glVertex3f(cx, cy0 + cos(a) * ry, sin(a) * rz);
-        }
-        glEnd();
-    }
-    glBegin(GL_LINES);
-    glVertex3f(cx, cy0 - 0.19f, 0); glVertex3f(cx, cy0 + 0.19f, 0);
-    glVertex3f(cx, cy0, -0.34f); glVertex3f(cx, cy0, 0.34f);
-    glEnd();
-
-    // Rotating sweep + fading trail
-    float sa = introTimer * 0.0018f;
-    glColor3f(0.2f, 1.0f, 0.6f);
-    glBegin(GL_LINES);
-    glVertex3f(cx, cy0, 0);
-    glVertex3f(cx, cy0 + cos(sa) * 0.19f, sin(sa) * 0.34f);
-    glEnd();
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glColor4f(0.1f, 0.6f, 0.4f, 0.4f);
-    glBegin(GL_LINES);
-    glVertex3f(cx, cy0, 0);
-    glVertex3f(cx, cy0 + cos(sa - 0.35f) * 0.19f, sin(sa - 0.35f) * 0.34f);
-    glEnd();
-    glDisable(GL_BLEND);
-
-    // LIVE CONTACTS: real fish (green) + rocks (amber) ahead of the bow.
-    // Local +X = forward: xl = cosY*dx - sinY*dz, zl = sinY*dx + cosY*dz
-    float yawR = sub.yaw * DEG_TO_RAD;
-    float cyaw = cos(yawR), syaw = sin(yawR);
-    const float RNG = 40.0f;
-    for (size_t i = 0; i < fishes.size(); i += 2) {
-        float dx = fishes[i].x - sub.x, dy = fishes[i].y - sub.y, dz = fishes[i].z - sub.z;
-        float xl = cyaw * dx - syaw * dz;
-        float zl = syaw * dx + cyaw * dz;
-        if (xl < 0.5f || xl > RNG || fabs(zl) > RNG) continue;
-        float dyc = dy > 4 ? 4 : (dy < -4 ? -4 : dy);
-        float py = cy0 + dyc / 4.0f * 0.17f;
-        float pz = -(zl / RNG) * 0.32f;
-        float s = 0.016f / (1.0f + xl * 0.04f) + 0.006f;
-        float pulse = 0.6f + 0.4f * sin(introTimer * 0.006f + fishes[i].animPhase);
-        drawSonarBlip(1.01f, py, pz, s, 0.2f * pulse, 1.0f * pulse, 0.45f * pulse);
-    }
-    for (size_t i = 0; i < rocks.size(); i += 2) {
-        float dx = rocks[i].x - sub.x, dz = rocks[i].z - sub.z;
-        float xl = cyaw * dx - syaw * dz;
-        float zl = syaw * dx + cyaw * dz;
-        if (xl < 0.5f || xl > RNG || fabs(zl) > RNG) continue;
-        float pz = -(zl / RNG) * 0.32f;
-        drawSonarBlip(1.01f, cy0 - 0.13f, pz, 0.02f, 1.0f, 0.55f, 0.15f);
-    }
-
-    // Depth bar (right edge) + readouts
-    float dfrac = fabs(sub.depth) / 50.0f; if (dfrac > 1) dfrac = 1;
-    glColor3f(0.05f, 0.35f, 0.3f);
-    glBegin(GL_QUADS);
-    glVertex3f(cx, -0.04f, 0.365f); glVertex3f(cx, -0.04f, 0.395f);
-    glVertex3f(cx, 0.40f, 0.395f); glVertex3f(cx, 0.40f, 0.365f);
-    glEnd();
-    glColor3f(0.2f, 1.0f, 0.6f);
-    glBegin(GL_QUADS);
-    glVertex3f(cx, -0.04f, 0.365f); glVertex3f(cx, -0.04f, 0.395f);
-    glVertex3f(cx, -0.04f + 0.44f * dfrac, 0.395f); glVertex3f(cx, -0.04f + 0.44f * dfrac, 0.365f);
-    glEnd();
-
-    char sbuf[64];
-    glColor3f(0.3f, 1.0f, 0.65f);
-    sprintf(sbuf, "DPT %.0fm", fabs(sub.depth));
-    drawText3D(1.0f, 0.345f, -0.395f, sbuf, GLUT_BITMAP_HELVETICA_10);
-    sprintf(sbuf, "SPD %.1f", sub.speed * 20.0f);
-    drawText3D(1.0f, 0.345f, 0.18f, sbuf, GLUT_BITMAP_HELVETICA_10);
-    sprintf(sbuf, "RNG %.0fm", RNG);
-    drawText3D(1.0f, -0.035f, -0.395f, sbuf, GLUT_BITMAP_HELVETICA_10);
-    if (sub.headlightsOn) {
-        glColor3f(1.0f, 0.85f, 0.4f);
-        sprintf(sbuf, "SRCH %.0fm", HEADLIGHT_RANGE);
-        drawText3D(1.0f, -0.035f, 0.16f, sbuf, GLUT_BITMAP_HELVETICA_10);
-    }
-    glEnable(GL_LIGHTING);
-    // Glass reflection streak over the screen
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glColor4f(0.5f, 0.7f, 0.8f, 0.06f);
-    glBegin(GL_QUADS);
-    glVertex3f(1.0f, -0.06f, -0.10f);
-    glVertex3f(1.0f, -0.06f, 0.05f);
-    glVertex3f(1.0f, 0.42f, -0.25f);
-    glVertex3f(1.0f, 0.42f, -0.40f);
-    glEnd();
-    glDisable(GL_BLEND);
-}
-
 void drawInterior() {
-    // PILOT POV COCKPIT (local space, bow = +X). The caller wraps this in
-    // the sub transform so pilot, yoke and screens travel with the boat.
-    // Look forward through the front viewport at the REAL ocean; the sonar
-    // monitor plots live contacts from actual fish/rock positions.
-    float panelR = 0.24f, panelG = 0.27f, panelB = 0.26f;
-    float darkR = 0.13f, darkG = 0.14f, darkB = 0.15f;
-
-    // ---- Floor tub + rails ----
+    // Main room walls
     glPushMatrix();
-    glColor3f(darkR, darkG, darkB);
-    glTranslatef(0.5f, -0.55f, 0);
-    glScalef(3.6f, 0.06f, 1.7f);
+
+    // Floor
+    glColor3f(0.25f, 0.28f, 0.3f);
+    glTranslatef(0, -0.8f, 0);
+    glScalef(3.0f, 0.05f, 2.5f);
     drawCube(1.0f);
     glPopMatrix();
-    for (int fr = -1; fr <= 1; fr += 2) {
+
+    // Ceiling
+    glPushMatrix();
+    glTranslatef(0, 1.2f, 0);
+    glColor3f(0.22f, 0.25f, 0.28f);
+    glScalef(3.0f, 0.05f, 2.5f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // Left wall
+    glPushMatrix();
+    glTranslatef(0, 0.2f, 1.25f);
+    glColor3f(0.3f, 0.33f, 0.35f);
+    glScalef(3.0f, 2.0f, 0.05f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // Right wall
+    glPushMatrix();
+    glTranslatef(0, 0.2f, -1.25f);
+    glColor3f(0.3f, 0.33f, 0.35f);
+    glScalef(3.0f, 2.0f, 0.05f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // Back wall
+    glPushMatrix();
+    glTranslatef(-1.5f, 0.2f, 0);
+    glColor3f(0.28f, 0.3f, 0.33f);
+    glScalef(0.05f, 2.0f, 2.5f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // Front wall with windows
+    glPushMatrix();
+    glTranslatef(1.5f, 0.2f, 0);
+    glColor3f(0.28f, 0.3f, 0.33f);
+    glScalef(0.05f, 2.0f, 2.5f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // Main control console (front)
+    glPushMatrix();
+    glTranslatef(1.3f, -0.3f, 0);
+    glColor3f(0.2f, 0.22f, 0.25f);
+    glScalef(0.3f, 0.8f, 1.8f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // Control panel screen
+    glPushMatrix();
+    glTranslatef(1.42f, 0.0f, 0);
+    glColor3f(0.0f, 0.15f, 0.1f);
+    glScalef(0.02f, 0.4f, 1.0f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // Screen glow
+    glPushMatrix();
+    glTranslatef(1.42f, 0.0f, 0);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glColor4f(0.0f, 0.4f, 0.2f, 0.15f);
+    glScalef(0.02f, 0.5f, 1.2f);
+    drawCube(1.0f);
+    glDisable(GL_BLEND);
+    glPopMatrix();
+
+    // Buttons on console
+    float buttonColors[][3] = {{0.8,0.2,0.1},{0.2,0.8,0.2},{0.2,0.2,0.8},{0.8,0.8,0.1},{0.8,0.4,0.1}};
+    for (int i = 0; i < 15; i++) {
         glPushMatrix();
-        glTranslatef(0.5f, -0.51f, fr * 0.45f);
-        glColor3f(0.08f, 0.08f, 0.09f);
-        glScalef(3.4f, 0.02f, 0.08f);
-        drawCube(1.0f);
+        float bx = 1.42f;
+        float by = -0.5f + (i / 5) * 0.15f;
+        float bz = -0.6f + (i % 5) * 0.3f;
+        glTranslatef(bx, by, bz);
+        glColor3fv(buttonColors[i % 5]);
+        drawSphere(0.03f, 6, 4);
         glPopMatrix();
     }
 
-    // ---- Side walls with window cutouts ----
-    for (int side = -1; side <= 1; side += 2) {
-        float zw = side * 0.85f;
-        glPushMatrix(); // lower wall
-        glTranslatef(0.5f, -0.15f, zw);
-        glColor3f(panelR, panelG, panelB);
-        glScalef(3.6f, 0.75f, 0.06f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix(); // brow above side window
-        glTranslatef(0.6f, 0.62f, zw);
-        glColor3f(panelR, panelG, panelB);
-        glScalef(1.6f, 0.28f, 0.06f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix(); // front pillar
-        glTranslatef(1.35f, 0.28f, zw);
-        glColor3f(panelR * 0.85f, panelG * 0.85f, panelB * 0.85f);
-        glScalef(0.10f, 0.95f, 0.07f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix(); // aft pillar
-        glTranslatef(-0.15f, 0.28f, zw);
-        glColor3f(panelR * 0.85f, panelG * 0.85f, panelB * 0.85f);
-        glScalef(0.10f, 0.95f, 0.07f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix(); // aft upper wall
-        glTranslatef(-0.75f, 0.45f, zw);
-        glColor3f(panelR, panelG, panelB);
-        glScalef(1.1f, 0.65f, 0.06f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix(); // side glass in the cutout
-        glTranslatef(0.6f, 0.28f, zw);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glColor4f(0.35f, 0.55f, 0.65f, 0.10f);
-        glScalef(1.4f, 0.55f, 0.01f);
-        drawCube(1.0f);
-        glDisable(GL_BLEND);
-        glPopMatrix();
-    }
-
-    // ---- Back wall + aft hatch wheel ----
-    glPushMatrix();
-    glTranslatef(-1.3f, 0.1f, 0);
-    glColor3f(panelR * 0.9f, panelG * 0.9f, panelB * 0.9f);
-    glScalef(0.06f, 1.7f, 1.7f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-1.26f, 0.1f, 0);
-    glRotatef(90, 0, 1, 0);
-    glColor3f(0.45f, 0.42f, 0.35f);
-    drawTorus(0.03f, 0.22f, 8, 20);
-    glPopMatrix();
-
-    // ---- Roof + red night lamps ----
-    glPushMatrix();
-    glTranslatef(0.4f, 0.80f, 0);
-    glColor3f(panelR * 0.92f, panelG * 0.92f, panelB * 0.92f);
-    glScalef(3.6f, 0.06f, 1.7f);
-    drawCube(1.0f);
-    glPopMatrix();
-    for (int li = -1; li <= 1; li += 2) {
+    // Side panels with instruments
+    for (int side = 0; side < 2; side++) {
+        float sz = side == 0 ? 1.2f : -1.2f;
         glPushMatrix();
-        glTranslatef(0.2f, 0.75f, li * 0.4f);
-        glColor3f(1.0f, 0.12f, 0.08f);
-        drawSphere(0.035f, 8, 6);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        glColor4f(1.0f, 0.1f, 0.06f, 0.25f);
-        drawSphere(0.07f, 8, 6);
-        glDisable(GL_BLEND);
-        glPopMatrix();
-    }
+        glTranslatef(0, 0, sz);
+        glRotatef(side == 0 ? 180 : 0, 0, 1, 0);
 
-    // ---- Front viewport frame at x=2.1 (opening shows the REAL ocean) ----
-    glPushMatrix(); // bottom sill
-    glTranslatef(2.1f, -0.12f, 0);
-    glColor3f(panelR, panelG, panelB);
-    glScalef(0.10f, 0.16f, 1.6f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix(); // top brow
-    glTranslatef(2.1f, 0.78f, 0);
-    glColor3f(panelR, panelG, panelB);
-    glScalef(0.10f, 0.12f, 1.6f);
-    drawCube(1.0f);
-    glPopMatrix();
-    for (int ps = -1; ps <= 1; ps++) { // side posts + center mullion
-        glPushMatrix();
-        glTranslatef(2.1f, 0.33f, ps * 0.75f);
-        glColor3f(panelR * 0.85f, panelG * 0.85f, panelB * 0.85f);
-        if (ps == 0) glScalef(0.08f, 0.82f, 0.06f);
-        else glScalef(0.10f, 0.90f, 0.10f);
+        // Panel
+        glColor3f(0.2f, 0.22f, 0.25f);
+        glScalef(2.5f, 1.5f, 0.1f);
         drawCube(1.0f);
         glPopMatrix();
-    }
 
-    // ---- Dashboard console + live sonar monitor (the "outside world" screen) ----
-    glPushMatrix();
-    glTranslatef(1.18f, -0.22f, 0);
-    glColor3f(0.16f, 0.18f, 0.19f);
-    glScalef(0.42f, 0.66f, 1.5f);
-    drawCube(1.0f);
-    glPopMatrix();
-    // Sloped top panel toward the pilot
-    glPushMatrix();
-    glTranslatef(1.02f, 0.02f, 0);
-    glRotatef(18, 0, 0, 1);
-    glColor3f(0.19f, 0.21f, 0.22f);
-    glScalef(0.35f, 0.05f, 1.45f);
-    drawCube(1.0f);
-    glPopMatrix();
-    drawSonarMonitor();
-
-    // Gauge dials on the console face (depth / speed / heading needles)
-    float needleVals[3] = {
-        120.0f - fabs(sub.depth) * 4.0f,
-        -120.0f + fabs(sub.speed) * 160.0f,
-        sub.yaw
-    };
-    for (int g = 0; g < 3; g++) {
-        float gz = -0.55f + g * 0.18f;
-        glPushMatrix(); // dial
-        glTranslatef(0.965f, -0.18f, gz);
-        glRotatef(-90, 0, 1, 0);
-        glColor3f(0.04f, 0.05f, 0.06f);
-        drawCylinder(0.055f, 0.02f, 12);
-        glPopMatrix();
-        glPushMatrix(); // needle
-        glTranslatef(0.95f, -0.18f, gz);
-        glRotatef(needleVals[g], 1, 0, 0);
-        glTranslatef(0, 0.03f, 0);
-        glColor3f(1.0f, 0.25f, 0.15f);
-        glScalef(0.008f, 0.045f, 0.008f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix(); // glass dot
-        glTranslatef(0.948f, -0.18f, gz);
-        glColor3f(0.7f, 0.85f, 0.9f);
-        drawSphere(0.008f, 6, 4);
-        glPopMatrix();
-    }
-
-    // Button rows (one blinks with the sonar sweep)
-    float buttonColors[][3] = {{0.9,0.2,0.1},{0.2,0.9,0.3},{0.9,0.7,0.1},{0.2,0.5,0.9}};
-    for (int i = 0; i < 16; i++) {
-        glPushMatrix();
-        glTranslatef(0.955f, -0.32f + (i / 8) * 0.09f, -0.62f + (i % 8) * 0.09f);
-        bool blink = (i == 3) && (sin(introTimer * 0.004f) > 0);
-        if (blink) glColor3f(1.0f, 1.0f, 1.0f);
-        else glColor3fv(buttonColors[i % 4]);
-        drawSphere(0.016f, 6, 4);
-        glPopMatrix();
-    }
-
-    // Throttle lever on the right console (follows YOUR speed)
-    glPushMatrix();
-    glTranslatef(0.55f, -0.02f, -0.62f);
-    glColor3f(0.10f, 0.10f, 0.11f);
-    glScalef(0.20f, 0.04f, 0.12f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(0.55f, 0.0f, -0.62f);
-    glRotatef(-25.0f + sub.speed * 45.0f, 0, 0, 1);
-    glTranslatef(0.09f, 0, 0);
-    glColor3f(0.55f, 0.15f, 0.10f);
-    glScalef(0.16f, 0.03f, 0.03f);
-    drawCube(1.0f);
-    glTranslatef(0.09f, 0, 0);
-    glColor3f(0.08f, 0.08f, 0.09f);
-    drawSphere(0.028f, 8, 6);
-    glPopMatrix();
-
-    // ---- Control yoke: wheel spins with roll, column pushes with pitch ----
-    glPushMatrix();
-    glTranslatef(0.72f - sub.pitch * 0.004f, -0.18f, 0);
-    glPushMatrix(); // column
-    glRotatef(28, 0, 0, 1);
-    glColor3f(0.15f, 0.15f, 0.16f);
-    glScalef(0.34f, 0.07f, 0.07f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix(); // wheel group
-    glTranslatef(-0.17f, 0.20f, 0);
-    glRotatef(sub.roll * 3.0f, 1, 0, 0);
-    glColor3f(0.42f, 0.42f, 0.45f);
-    glRotatef(90, 0, 1, 0);
-    drawTorus(0.032f, 0.15f, 8, 20);
-    glPopMatrix();
-    // pilot hands gripping the wheel (turn WITH it)
-    glPushMatrix();
-    glTranslatef(-0.17f, 0.20f, 0);
-    glRotatef(sub.roll * 3.0f, 1, 0, 0);
-    for (int hd = -1; hd <= 1; hd += 2) {
-        glPushMatrix();
-        glTranslatef(0, 0.02f, hd * 0.15f);
-        glColor3f(0.85f, 0.68f, 0.55f);
-        drawSphere(0.045f, 8, 6);
-        glPushMatrix();
-        glTranslatef(-0.10f, -0.10f, 0);
-        glColor3f(0.16f, 0.22f, 0.38f);
-        glScalef(0.16f, 0.07f, 0.07f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPopMatrix();
-    }
-    glPopMatrix();
-    glPopMatrix();
-
-    // ---- Side consoles (under the side windows) ----
-    for (int side = -1; side <= 1; side += 2) {
-        float sz = side * 0.68f;
-        glPushMatrix();
-        glTranslatef(0.55f, -0.28f, sz);
-        glColor3f(0.17f, 0.19f, 0.20f);
-        glScalef(1.3f, 0.42f, 0.22f);
-        drawCube(1.0f);
-        glPopMatrix();
-        // console warning lights
-        for (int bl = 0; bl < 5; bl++) {
+        // Gauges
+        for (int g = 0; g < 3; g++) {
             glPushMatrix();
-            glTranslatef(0.30f + bl * 0.14f, -0.10f, sz - side * 0.12f);
-            float on = 0.5f + 0.5f * sin(introTimer * 0.003f + bl * 1.7f + side);
-            if (bl == 4) glColor3f(0.9f * on + 0.1f, 0.15f, 0.1f);
-            else glColor3f(0.15f, 0.55f * on + 0.2f, 0.2f);
-            drawSphere(0.014f, 6, 4);
-            glPopMatrix();
-        }
-        // small side dial
-        glPushMatrix();
-        glTranslatef(0.95f, -0.12f, sz - side * 0.12f);
-        glRotatef(side > 0 ? -90 : 90, 0, 1, 0);
-        glColor3f(0.04f, 0.05f, 0.06f);
-        drawCylinder(0.05f, 0.02f, 12);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(0.95f, -0.12f, sz - side * 0.12f);
-        glRotatef((side > 0 ? -1 : 1) * (introTimer * 0.02f + side * 40), 0, 0, 1);
-        glColor3f(0.9f, 0.6f, 0.15f);
-        glScalef(0.006f, 0.04f, 0.006f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-
-    // ---- Wall + roof pipes ----
-    for (int p = 0; p < 3; p++) {
-        glPushMatrix();
-        glTranslatef(-0.4f + p * 0.5f, 0.72f, 0);
-        glColor3f(0.42f, 0.36f, 0.28f);
-        glRotatef(90, 0, 0, 1);
-        drawCylinder(0.032f, 3.0f, 8);
-        glPopMatrix();
-    }
-    for (int side = -1; side <= 1; side += 2) {
-        glPushMatrix();
-        glTranslatef(0.4f, 0.55f, side * 0.80f);
-        glColor3f(0.30f, 0.32f, 0.34f);
-        glRotatef(90, 0, 0, 1);
-        drawCylinder(0.025f, 3.2f, 8);
-        glPopMatrix();
-    }
-    // valve wheels on the pipes
-    for (int v = 0; v < 2; v++) {
-        glPushMatrix();
-        glTranslatef(-0.3f + v * 0.9f, 0.66f, 0.78f);
-        glColor3f(0.6f, 0.12f, 0.10f);
-        drawTorus(0.015f, 0.05f, 6, 12);
-        glPopMatrix();
-    }
-
-    // ---- Periscope column (starboard, clear of the viewport) ----
-    glPushMatrix();
-    glTranslatef(1.55f, 0.05f, 0.55f);
-    glColor3f(0.32f, 0.33f, 0.35f);
-    drawCylinder(0.055f, 1.35f, 10);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(1.55f, -0.15f, 0.55f);
-    glColor3f(0.32f, 0.33f, 0.35f);
-    glScalef(0.30f, 0.05f, 0.05f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(1.55f, -0.32f, 0.55f);
-    glColor3f(0.10f, 0.10f, 0.11f);
-    glScalef(0.12f, 0.18f, 0.10f);
-    drawCube(1.0f);
-    glPopMatrix();
-
-    // ---- Pilot seat (below/behind your eyes) ----
-    glPushMatrix();
-    glTranslatef(0.0f, -0.42f, 0);
-    glColor3f(0.14f, 0.14f, 0.16f);
-    glScalef(0.35f, 0.06f, 0.35f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-0.20f, -0.25f, 0);
-    glColor3f(0.14f, 0.14f, 0.16f);
-    glScalef(0.06f, 0.38f, 0.35f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-0.05f, -0.50f, 0);
-    glColor3f(0.10f, 0.10f, 0.11f);
-    glScalef(0.08f, 0.12f, 0.08f);
-    drawCube(1.0f);
-    glPopMatrix();
-
-    // ---- Fire extinguisher + storage box (decor) ----
-    glPushMatrix();
-    glTranslatef(-1.05f, -0.30f, 0.62f);
-    glColor3f(0.7f, 0.10f, 0.08f);
-    drawCylinder(0.06f, 0.32f, 10);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-1.05f, -0.12f, 0.62f);
-    glColor3f(0.08f, 0.08f, 0.09f);
-    drawCylinder(0.02f, 0.08f, 8);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-1.02f, -0.42f, -0.55f);
-    glColor3f(0.35f, 0.38f, 0.30f);
-    glScalef(0.35f, 0.20f, 0.30f);
-    drawCube(1.0f);
-    glPopMatrix();
-
-    // ---- Co-pilot (port side): seated, working the side console ----
-    {
-        float bx = 0.05f, bz = 0.52f;
-        float bob = sin(introTimer * 0.0022f) * 0.012f;
-        // thighs
-        for (int lg = -1; lg <= 1; lg += 2) {
-            glPushMatrix();
-            glTranslatef(bx + 0.12f, -0.40f, bz + lg * 0.08f);
-            glColor3f(0.14f, 0.18f, 0.30f);
-            glScalef(0.28f, 0.08f, 0.08f);
+            glTranslatef(-0.5f + g * 0.6f, 0.1f, sz * 0.95f);
+            glColor3f(0.1f, 0.1f, 0.12f);
+            drawCylinder(0.1f, 0.02f, 12);
+            glColor3f(0.8f, 0.2f, 0.1f);
+            glRotatef(introTimer * 0.05f + g * 45, 0, 0, 1);
+            glTranslatef(0, 0, 0.01f);
+            glScalef(0.08f, 0.01f, 0.01f);
             drawCube(1.0f);
             glPopMatrix();
         }
-        // torso
+    }
+
+    // Pipes on ceiling
+    for (int p = 0; p < 4; p++) {
         glPushMatrix();
-        glTranslatef(bx - 0.05f, -0.18f + bob, bz);
-        glColor3f(0.16f, 0.22f, 0.38f);
-        glScalef(0.20f, 0.32f, 0.24f);
+        glTranslatef(-1.0f + p * 0.7f, 1.1f, 0);
+        glColor3f(0.4f, 0.35f, 0.3f);
+        glRotatef(90, 0, 0, 1);
+        drawCylinder(0.04f, 2.5f, 8);
+        glPopMatrix();
+    }
+
+    // Chairs/seats
+    for (int s = 0; s < 3; s++) {
+        glPushMatrix();
+        glTranslatef(0.8f, -0.55f, -0.7f + s * 0.7f);
+        // Seat
+        glColor3f(0.15f, 0.15f, 0.18f);
+        glScalef(0.25f, 0.05f, 0.25f);
         drawCube(1.0f);
         glPopMatrix();
-        // head + cap (turns toward the console screens)
-        float look = sin(introTimer * 0.0011f) * 0.35f;
+        // Back
         glPushMatrix();
-        glTranslatef(bx + 0.02f, 0.06f + bob, bz);
-        glRotatef(look * 30.0f, 0, 1, 0);
-        glColor3f(0.85f, 0.68f, 0.55f);
-        drawSphere(0.085f, 10, 8);
-        glTranslatef(0, 0.055f, 0);
-        glColor3f(0.08f, 0.10f, 0.28f);
-        drawCylinder(0.088f, 0.035f, 10);
-        glPopMatrix();
-        // right arm typing on the console
-        float type = sin(introTimer * 0.009f) * 12.0f;
-        glPushMatrix();
-        glTranslatef(bx + 0.05f, -0.10f, bz + 0.12f);
-        glRotatef(-50 + type, 0, 0, 1);
-        glColor3f(0.16f, 0.22f, 0.38f);
-        glScalef(0.05f, 0.22f, 0.05f);
-        drawCube(1.0f);
-        glPopMatrix();
-        // left arm resting
-        glPushMatrix();
-        glTranslatef(bx - 0.08f, -0.22f, bz - 0.13f);
-        glRotatef(15, 0, 0, 1);
-        glColor3f(0.16f, 0.22f, 0.38f);
-        glScalef(0.05f, 0.24f, 0.05f);
-        drawCube(1.0f);
-        glPopMatrix();
-        // seat
-        glPushMatrix();
-        glTranslatef(bx - 0.08f, -0.46f, bz);
-        glColor3f(0.13f, 0.13f, 0.15f);
-        glScalef(0.30f, 0.06f, 0.32f);
+        glTranslatef(0.65f, -0.3f, -0.7f + s * 0.7f);
+        glColor3f(0.15f, 0.15f, 0.18f);
+        glScalef(0.05f, 0.4f, 0.25f);
         drawCube(1.0f);
         glPopMatrix();
     }
 
-    // ---- Front viewport glass + glare + wiper ----
-    glPushMatrix();
-    glTranslatef(2.1f, 0.33f, 0);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(0.45f, 0.65f, 0.75f, 0.07f);
-    glScalef(0.01f, 0.82f, 1.42f);
-    drawCube(1.0f);
-    glDisable(GL_BLEND);
-    glPopMatrix();
-    // faint diagonal glare streak
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glColor4f(0.6f, 0.8f, 0.9f, 0.05f);
-    glBegin(GL_QUADS);
-    glVertex3f(2.09f, -0.05f, 0.55f);
-    glVertex3f(2.09f, -0.05f, 0.70f);
-    glVertex3f(2.09f, 0.72f, -0.30f);
-    glVertex3f(2.09f, 0.72f, -0.45f);
-    glEnd();
-    glDisable(GL_BLEND);
-    // wiper parked on the glass
-    glPushMatrix();
-    glTranslatef(2.08f, -0.02f, -0.35f);
-    glRotatef(24, 1, 0, 0);
-    glColor3f(0.06f, 0.06f, 0.07f);
-    glScalef(0.015f, 0.55f, 0.02f);
-    drawCube(1.0f);
-    glPopMatrix();
+    // Draw crew members
+    for (size_t i = 0; i < crew.size(); i++) {
+        CrewMember& c = crew[i];
+        glPushMatrix();
+        glTranslatef(c.x, c.y, c.z);
+
+        // Body
+        glColor3f(0.2f, 0.3f, 0.5f);
+        glScalef(0.15f, 0.25f, 0.1f);
+        drawCube(1.0f);
+        glPopMatrix();
+
+        // Head
+        glPushMatrix();
+        float headBob = sin(introTimer * 0.002f + i * 2) * 0.02f;
+        glTranslatef(c.x, c.y + 0.35f + headBob, c.z);
+        glColor3f(0.85f, 0.7f, 0.6f);
+        drawSphere(0.1f, 8, 6);
+
+        // Cap
+        glColor3f(0.1f, 0.1f, 0.3f);
+        glTranslatef(0, 0.06f, 0);
+        drawCylinder(0.1f, 0.04f, 8);
+        glPopMatrix();
+
+        // Arms animation
+        float armAnim = sin(introTimer * 0.003f + i * 3) * 15.0f;
+        // Left arm
+        glPushMatrix();
+        glTranslatef(c.x + 0.12f, c.y + 0.1f, c.z);
+        glRotatef(armAnim, 0, 0, 1);
+        glColor3f(0.2f, 0.3f, 0.5f);
+        glScalef(0.04f, 0.2f, 0.04f);
+        drawCube(1.0f);
+        glPopMatrix();
+        // Right arm
+        glPushMatrix();
+        glTranslatef(c.x - 0.12f, c.y + 0.1f, c.z);
+        glRotatef(-armAnim, 0, 0, 1);
+        glColor3f(0.2f, 0.3f, 0.5f);
+        glScalef(0.04f, 0.2f, 0.04f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+
+    // Portholes from inside
+    for (int pw = 0; pw < 2; pw++) {
+        float pz = pw == 0 ? 1.22f : -1.22f;
+        float pAngle = pw == 0 ? 0 : 180;
+        glPushMatrix();
+        glTranslatef(0.3f, 0.2f, pz);
+        glRotatef(pAngle, 0, 1, 0);
+
+        // Window frame
+        glColor3f(0.4f, 0.4f, 0.42f);
+        drawCylinder(0.2f, 0.08f, 16);
+        // Window glass
+        glColor4f(0.1f, 0.3f, 0.5f, 0.5f);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        drawDisk(0.0f, 0.18f, 16);
+        glDisable(GL_BLEND);
+        glPopMatrix();
+    }
 }
 
 // ============================================================
@@ -2072,8 +1689,7 @@ void drawHUD() {
     sprintf(buf, "SPEED: %.1f knots", sub.speed * 20.0f);
     drawText(20, windowHeight - 60, buf, GLUT_BITMAP_HELVETICA_18);
 
-    if (sub.headlightsOn) sprintf(buf, "LIGHT: ON (%.0fm)", HEADLIGHT_RANGE);
-    else sprintf(buf, "LIGHT: OFF");
+    sprintf(buf, "LIGHT: %s", sub.headlightsOn ? "ON" : "OFF");
     drawText(20, windowHeight - 85, buf, GLUT_BITMAP_HELVETICA_18);
 
     sprintf(buf, "ENGINE: %s", fabs(sub.speed) > 0.01f ? "ACTIVE" : "IDLE");
@@ -2252,57 +1868,56 @@ void setupCamera() {
         break;
     }
     case CAM_INTERIOR: {
-        // Pilot's eyes: seated at the yoke, dashboard below, viewport ahead
         float subYawRad = sub.yaw * DEG_TO_RAD;
         float subPitchRad = sub.pitch * DEG_TO_RAD;
-        float fx0 = cos(subYawRad), fz0 = -sin(subYawRad);
-        gluLookAt(sub.x + fx0 * 0.35f, sub.y + 0.28f, sub.z + fz0 * 0.35f,
-                   sub.x + fx0 * 30.0f, sub.y + sin(subPitchRad) * 10.0f + 0.10f, sub.z + fz0 * 30.0f,
-                   0, 1, 0);
+        // Camera inside submarine, behind controls
+        float ix = sub.x + cos(subYawRad) * 0.8f;
+        float iy = sub.y + 0.3f;
+        float iz = sub.z - sin(subYawRad) * 0.8f;
+        float fx = sub.x + cos(subYawRad) * 3.0f;
+        float fy = sub.y + sin(subPitchRad) * 2.0f;
+        float fz = sub.z - sin(subYawRad) * 3.0f;
+        gluLookAt(ix, iy, iz, fx, fy, fz, 0, 1, 0);
         break;
     }
     case CAM_FRONT_WINDOW: {
-        // Nose against the front viewport glass
         float subYawRad = sub.yaw * DEG_TO_RAD;
-        float fx0 = cos(subYawRad), fz0 = -sin(subYawRad);
-        gluLookAt(sub.x + fx0 * 1.9f, sub.y + 0.35f, sub.z + fz0 * 1.9f,
-                   sub.x + fx0 * 30.0f, sub.y + sin(sub.pitch * DEG_TO_RAD) * 10.0f + 0.2f, sub.z + fz0 * 30.0f,
-                   0, 1, 0);
+        float fx = sub.x + cos(subYawRad) * 3.0f;
+        float fy = sub.y + sin(sub.pitch * DEG_TO_RAD) * 2.0f;
+        float fz = sub.z - sin(subYawRad) * 3.0f;
+        gluLookAt(sub.x + cos(subYawRad) * 1.5f, sub.y, sub.z - sin(subYawRad) * 1.5f,
+                   fx, fy, fz, 0, 1, 0);
         break;
     }
     case CAM_LEFT_WINDOW: {
-        // Lean to the port side window, gaze out abeam
         float subYawRad = sub.yaw * DEG_TO_RAD;
-        float fx0 = cos(subYawRad), fz0 = -sin(subYawRad);
-        float zx0 = sin(subYawRad), zz0 = cos(subYawRad);
-        float ex = sub.x + fx0 * 0.6f + zx0 * 0.3f;
-        float ey = sub.y + 0.25f;
-        float ez = sub.z + fz0 * 0.6f + zz0 * 0.3f;
-        gluLookAt(ex, ey, ez,
-                   ex + zx0 * 10.0f + fx0 * 3.0f, ey, ez + zz0 * 10.0f + fz0 * 3.0f,
-                   0, 1, 0);
+        float lx = sub.x + cos(subYawRad) * 0.5f;
+        float ly = sub.y;
+        float lz = sub.z - sin(subYawRad) * 0.5f + 1.5f;
+        float lx2 = lx + cos(subYawRad) * 10.0f;
+        float lz2 = lz + sin(subYawRad + PI / 2) * 10.0f;
+        gluLookAt(lx, ly, lz, lx2, ly, lz2, 0, 1, 0);
         break;
     }
     case CAM_RIGHT_WINDOW: {
-        // Lean to the starboard side window, gaze out abeam
         float subYawRad = sub.yaw * DEG_TO_RAD;
-        float fx0 = cos(subYawRad), fz0 = -sin(subYawRad);
-        float zx0 = sin(subYawRad), zz0 = cos(subYawRad);
-        float ex = sub.x + fx0 * 0.6f - zx0 * 0.3f;
-        float ey = sub.y + 0.25f;
-        float ez = sub.z + fz0 * 0.6f - zz0 * 0.3f;
-        gluLookAt(ex, ey, ez,
-                   ex - zx0 * 10.0f + fx0 * 3.0f, ey, ez - zz0 * 10.0f + fz0 * 3.0f,
-                   0, 1, 0);
+        float rx = sub.x + cos(subYawRad) * 0.5f;
+        float ry = sub.y;
+        float rz = sub.z - sin(subYawRad) * 0.5f - 1.5f;
+        float rx2 = rx + cos(subYawRad) * 10.0f;
+        float rz2 = rz - sin(subYawRad + PI / 2) * 10.0f;
+        gluLookAt(rx, ry, rz, rx2, ry, rz2, 0, 1, 0);
         break;
     }
     case CAM_CONTROL_SCREEN: {
-        // Pilot staring at the sonar monitor: live contacts screen
         float subYawRad = sub.yaw * DEG_TO_RAD;
-        float fx0 = cos(subYawRad), fz0 = -sin(subYawRad);
-        gluLookAt(sub.x + fx0 * 0.35f, sub.y + 0.28f, sub.z + fz0 * 0.35f,
-                   sub.x + fx0 * 1.02f, sub.y + 0.18f, sub.z + fz0 * 1.02f,
-                   0, 1, 0);
+        float sx = sub.x + cos(subYawRad) * 1.4f;
+        float sy = sub.y + 0.3f;
+        float sz = sub.z - sin(subYawRad) * 1.4f;
+        float sx2 = sub.x + cos(subYawRad) * 30.0f;
+        float sy2 = sub.y;
+        float sz2 = sub.z - sin(subYawRad) * 30.0f;
+        gluLookAt(sx, sy, sz, sx2, sy2, sz2, 0, 1, 0);
         break;
     }
     case CAM_FREE: {
@@ -2663,14 +2278,7 @@ void display() {
         if (cameraMode == CAM_INTERIOR || cameraMode == CAM_FRONT_WINDOW ||
             cameraMode == CAM_LEFT_WINDOW || cameraMode == CAM_RIGHT_WINDOW ||
             cameraMode == CAM_CONTROL_SCREEN) {
-            // Cockpit travels WITH the boat (local space, bow = +X)
-            glPushMatrix();
-            glTranslatef(sub.x, sub.y, sub.z);
-            glRotatef(sub.yaw, 0, 1, 0);
-            glRotatef(sub.pitch, 0, 0, 1);
-            glRotatef(sub.roll, 1, 0, 0);
             drawInterior();
-            glPopMatrix();
         } else {
             drawFullSubmarine();
         }
