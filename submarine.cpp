@@ -54,6 +54,9 @@ struct Submarine {
     float depth;
     float descentRate;
 } sub;
+const float SUB_SCALE = 1.4f;
+const float SUB_LEN = 1.5f;
+const float BOW_TIP = 3.9f * 1.4f * 1.5f;
 
 // Camera State
 struct Camera {
@@ -127,6 +130,32 @@ struct Coral {
     int type;
 };
 std::vector<Coral> corals;
+
+struct Shark {
+    float cx, cy, cz;
+    float radius;
+    float angle;
+    float speed;
+    float size;
+};
+std::vector<Shark> sharks;
+
+struct Ray {
+    float cx, cy, cz;
+    float radius;
+    float angle;
+    float speed;
+    float size;
+    float phase;
+};
+std::vector<Ray> rays;
+
+struct Kelp {
+    float x, z;
+    float h;
+    float phase;
+};
+std::vector<Kelp> kelp;
 
 // Crew
 struct CrewMember {
@@ -354,7 +383,7 @@ void initSubmarine() {
     sub.yaw = 0; sub.pitch = 0; sub.roll = 0;
     sub.speed = 0; sub.targetSpeed = 0;
     sub.propellerAngle = 0;
-    sub.headlightsOn = false;
+    sub.headlightsOn = true;
     sub.depth = 0;
     sub.descentRate = 0;
 }
@@ -362,7 +391,7 @@ void initSubmarine() {
 void initCamera() {
     cam.orbitAngleH = 30.0f;
     cam.orbitAngleV = 20.0f;
-    cam.orbitDistance = 15.0f;
+    cam.orbitDistance = 21.0f;
     cam.freeX = 0; cam.freeY = 5; cam.freeZ = 15;
     cam.freeYaw = 0; cam.freePitch = 0;
 }
@@ -372,21 +401,30 @@ void initEnvironment() {
 
     // Fish
     fishes.clear();
-    for (int i = 0; i < 60; i++) {
+    for (int i = 0; i < 160; i++) {
         Fish f;
         f.x = (rand() % 400 - 200) * 0.1f;
         f.y = -(rand() % 80) * 0.5f;
         f.z = (rand() % 400 - 200) * 0.1f;
         f.speed = 0.02f + (rand() % 100) * 0.0005f;
         f.angle = (rand() % 360) * DEG_TO_RAD;
-        f.size = 0.1f + (rand() % 100) * 0.003f;
-        f.type = rand() % 3;
+        int sizeClass = rand() % 10;
+        if (sizeClass < 4) f.size = 0.18f + (rand() % 100) * 0.0015f;
+        else if (sizeClass < 8) f.size = 0.35f + (rand() % 100) * 0.0025f;
+        else f.size = 0.60f + (rand() % 100) * 0.004f;
+        f.type = rand() % 4;
+        if (f.type == 3) f.type = 1;
         f.animPhase = (rand() % 1000) * 0.01f;
-        f.r = 0.3f + (rand() % 100) * 0.007f;
-        f.g = 0.3f + (rand() % 100) * 0.007f;
-        f.b = 0.5f + (rand() % 100) * 0.005f;
-        if (f.type == 1) { f.r = 0.8f; f.g = 0.2f; f.b = 0.1f; }
-        if (f.type == 2) { f.r = 0.6f; f.g = 0.2f; f.b = 0.8f; f.y -= 2.0f; }
+        switch (rand() % 6) {
+        case 0: f.r = 1.0f; f.g = 0.55f; f.b = 0.10f; break;
+        case 1: f.r = 1.0f; f.g = 0.85f; f.b = 0.20f; break;
+        case 2: f.r = 0.20f; f.g = 0.45f; f.b = 1.0f; break;
+        case 3: f.r = 1.0f; f.g = 0.45f; f.b = 0.05f; break;
+        case 4: f.r = 0.15f; f.g = 0.75f; f.b = 0.85f; break;
+        default: f.r = 0.95f; f.g = 0.95f; f.b = 0.95f; break;
+        }
+        if (f.type == 1) { f.size = 0.55f + (rand() % 100) * 0.004f; }
+        if (f.type == 2) { f.r = 0.75f; f.g = 0.45f; f.b = 0.95f; f.y -= 2.0f; }
         fishes.push_back(f);
     }
 
@@ -401,35 +439,99 @@ void initEnvironment() {
         seaweeds.push_back(s);
     }
 
+    // Reef centers: rock piles + coral + kelp cluster here
+    float reefX[] = { 8.0f, -10.0f, 14.0f, -4.0f, 2.0f, -16.0f };
+    float reefZ[] = { 6.0f, 8.0f, -8.0f, -12.0f, 14.0f, -4.0f };
+
     // Rocks
     rocks.clear();
-    for (int i = 0; i < 40; i++) {
+    for (int i = 0; i < 90; i++) {
         Rock r;
-        r.x = (rand() % 600 - 300) * 0.1f;
-        r.y = -16.0f - (rand() % 50) * 0.06f;
-        r.z = (rand() % 600 - 300) * 0.1f;
-        r.scaleX = 0.3f + (rand() % 100) * 0.01f;
-        r.scaleY = 0.2f + (rand() % 100) * 0.008f;
-        r.scaleZ = 0.3f + (rand() % 100) * 0.01f;
-        r.r = 0.4f + (rand() % 50) * 0.005f;
-        r.g = 0.35f + (rand() % 50) * 0.005f;
-        r.b = 0.3f + (rand() % 50) * 0.005f;
+        if (i < 60) {
+            int reef = rand() % 6;
+            r.x = reefX[reef] + (rand() % 100 - 50) * 0.08f;
+            r.z = reefZ[reef] + (rand() % 100 - 50) * 0.08f;
+            r.y = -16.0f + (rand() % 100) * 0.025f;
+        } else {
+            r.x = (rand() % 600 - 300) * 0.1f;
+            r.y = -16.0f - (rand() % 50) * 0.06f;
+            r.z = (rand() % 600 - 300) * 0.1f;
+        }
+        r.scaleX = 0.5f + (rand() % 100) * 0.017f;
+        r.scaleY = 0.4f + (rand() % 100) * 0.014f;
+        r.scaleZ = 0.5f + (rand() % 100) * 0.017f;
+        float algae = (rand() % 100) / 100.0f;
+        r.r = 0.32f + algae * 0.10f;
+        r.g = 0.30f + algae * 0.16f;
+        r.b = 0.22f + algae * 0.06f;
         rocks.push_back(r);
+    }
+
+    // Kelp tufts around reefs
+    kelp.clear();
+    for (int i = 0; i < 150; i++) {
+        Kelp k;
+        int reef = rand() % 6;
+        if (rand() % 100 < 75) {
+            k.x = reefX[reef] + (rand() % 100 - 50) * 0.10f;
+            k.z = reefZ[reef] + (rand() % 100 - 50) * 0.10f;
+        } else {
+            k.x = (rand() % 600 - 300) * 0.1f;
+            k.z = (rand() % 600 - 300) * 0.1f;
+        }
+        k.h = 4.0f + (rand() % 100) * 0.05f;
+        k.phase = (rand() % 1000) * 0.01f;
+        kelp.push_back(k);
     }
 
     // Coral
     corals.clear();
-    for (int i = 0; i < 30; i++) {
+    for (int i = 0; i < 70; i++) {
         Coral c;
         c.x = (rand() % 400 - 200) * 0.1f;
         c.y = -16.0f;
         c.z = (rand() % 400 - 200) * 0.1f;
-        c.size = 0.3f + (rand() % 100) * 0.01f;
+        c.size = 0.7f + (rand() % 100) * 0.015f;
+        c.y = -15.7f;
         c.type = rand() % 3;
-        c.r = 0.8f + (rand() % 20) * 0.01f;
-        c.g = 0.1f + (rand() % 50) * 0.008f;
-        c.b = 0.3f + (rand() % 30) * 0.01f;
+        switch (rand() % 6) {
+        case 0: c.r = 1.0f; c.g = 0.62f; c.b = 0.72f; break;
+        case 1: c.r = 1.0f; c.g = 0.55f; c.b = 0.25f; break;
+        case 2: c.r = 0.96f; c.g = 0.93f; c.b = 0.86f; break;
+        case 3: c.r = 0.70f; c.g = 0.40f; c.b = 0.85f; break;
+        case 4: c.r = 0.95f; c.g = 0.25f; c.b = 0.35f; break;
+        default: c.r = 1.0f; c.g = 0.75f; c.b = 0.45f; break;
+        }
         corals.push_back(c);
+    }
+
+    // Sharks circling mid-water
+    sharks.clear();
+    for (int i = 0; i < 3; i++) {
+        Shark s;
+        s.cx = (rand() % 200 - 100) * 0.1f;
+        s.cy = -5.0f - (rand() % 50) * 0.1f;
+        s.cz = (rand() % 200 - 100) * 0.1f;
+        s.radius = 10.0f + (rand() % 100) * 0.08f;
+        s.angle = (rand() % 360) * DEG_TO_RAD;
+        s.speed = 0.002f + (rand() % 50) * 0.00004f;
+        s.size = 1.2f + (rand() % 100) * 0.008f;
+        sharks.push_back(s);
+    }
+
+    // Stingrays gliding near the reef
+    rays.clear();
+    for (int i = 0; i < 2; i++) {
+        Ray r;
+        r.cx = (rand() % 200 - 100) * 0.1f;
+        r.cy = -7.0f - (rand() % 40) * 0.1f;
+        r.cz = (rand() % 200 - 100) * 0.1f;
+        r.radius = 8.0f + (rand() % 100) * 0.06f;
+        r.angle = (rand() % 360) * DEG_TO_RAD;
+        r.speed = 0.0015f + (rand() % 50) * 0.00003f;
+        r.size = 0.9f + (rand() % 100) * 0.006f;
+        r.phase = (rand() % 1000) * 0.01f;
+        rays.push_back(r);
     }
 
     // Crew members
@@ -489,248 +591,203 @@ void initEnvironment() {
 // DRAW SUBMARINE
 // ============================================================
 void drawSubmarineBody() {
-    // IDEA from ref: long black military hull, rounded sonar bow,
-    // tall conning tower with periscope + masts, twin bow searchlights,
-    // bow planes + sail planes + cruciform stern rudder, 7-blade screw.
-    // Hull axis = X, bow = +X. All built from OpenGL primitives.
-
     float hullR = 1.0f;
-    float hullBlack[3] = { 0.32f, 0.33f, 0.36f };
-    float hullTop[3] = { 0.45f, 0.46f, 0.49f };
-    float darkDetail[3] = { 0.22f, 0.22f, 0.24f };
+    float hullDark[3] = { 0.24f, 0.25f, 0.27f };
+    float hullSide[3] = { 0.30f, 0.31f, 0.33f };
+    float hullTopC[3] = { 0.42f, 0.43f, 0.45f };
 
-    // ---- Main pressure hull : long cylinder along X ----
     glPushMatrix();
-    glColor3fv(hullBlack);
-    glRotatef(90, 0, 1, 0); // cylinder Z -> X
+    glColor3fv(hullDark);
+    glRotatef(90, 0, 1, 0);
     glTranslatef(0, 0, -2.5f);
     GLUquadric* hullQ = gluNewQuadric();
-    gluCylinder(hullQ, hullR, hullR, 5.0f, 24, 4);
+    gluCylinder(hullQ, hullR, hullR, 5.0f, 48, 6);
     gluDeleteQuadric(hullQ);
     glPopMatrix();
 
-    // ---- Rounded sonar bow (hemisphere) ----
     glPushMatrix();
     glTranslatef(2.5f, 0, 0);
-    glColor3fv(hullBlack);
-    glScalef(1.1f, 1.0f, 1.0f);
-    drawSphere(hullR, 24, 16);
+    glColor3fv(hullDark);
+    glScalef(1.35f, 1.0f, 0.92f);
+    drawSphere(hullR, 48, 32);
     glPopMatrix();
 
-    // ---- Bow highlight cap (top sheen like ref) ----
     glPushMatrix();
-    glTranslatef(2.2f, 0.45f, 0);
-    glColor3fv(hullTop);
-    glScalef(1.2f, 0.35f, 0.7f);
-    drawSphere(0.6f, 16, 10);
+    glTranslatef(0.8f, 0.95f, 0);
+    glColor3fv(hullTopC);
+    glScalef(3.4f, 0.20f, 0.45f);
+    drawSphere(0.5f, 24, 12);
     glPopMatrix();
 
-    // ---- Stern taper ----
     glPushMatrix();
     glTranslatef(-2.5f, 0, 0);
     glRotatef(-90, 0, 1, 0);
-    glColor3fv(hullBlack);
+    glColor3fv(hullDark);
     GLUquadric* taperQ = gluNewQuadric();
-    gluCylinder(taperQ, hullR, 0.32f, 1.6f, 20, 3);
+    gluCylinder(taperQ, hullR, 0.30f, 1.7f, 22, 3);
     gluDeleteQuadric(taperQ);
     glPopMatrix();
 
-    // ---- Stern cone end cap ----
-    glPushMatrix();
-    glTranslatef(-4.1f, 0, 0);
-    glRotatef(-90, 0, 1, 0);
-    glColor3fv(darkDetail);
-    drawCone(0.32f, 0.35f, 16);
-    glPopMatrix();
-
-    // ---- Hull panel rings (metal plating lines from ref) ----
-    glColor3f(0.08f, 0.085f, 0.095f);
-    for (int i = 0; i < 6; i++) {
-        glPushMatrix();
-        glTranslatef(1.8f - i * 0.85f, 0, 0);
-        glRotatef(90, 0, 1, 0);
-        drawTorus(0.012f, hullR + 0.005f, 8, 32);
-        glPopMatrix();
-    }
-
-    // ---- Deck walkway strip on top ----
-    glPushMatrix();
-    glTranslatef(0.1f, hullR - 0.02f, 0);
-    glColor3f(0.09f, 0.09f, 0.10f);
-    glScalef(4.6f, 0.04f, 0.28f);
-    drawCube(1.0f);
-    glPopMatrix();
-
-    // ---- Limber holes (row of drain slots along deck, like ref) ----
-    glColor3f(0.02f, 0.02f, 0.025f);
-    for (int i = 0; i < 9; i++) {
-        glPushMatrix();
-        glTranslatef(1.9f - i * 0.5f, 0.72f, 0.62f);
-        glScalef(0.18f, 0.10f, 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(1.9f - i * 0.5f, 0.72f, -0.62f);
-        glScalef(0.18f, 0.10f, 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-
-    // ---- Conning tower / sail (tall swept tower, slightly fwd of mid) ----
-    glPushMatrix();
-    glTranslatef(0.45f, hullR + 0.55f, 0);
-    glColor3fv(hullBlack);
-    glScalef(1.25f, 1.15f, 0.55f);
-    drawCube(1.0f);
-    glPopMatrix();
-    // Sail leading-edge wedge (swept front like ref)
-    glPushMatrix();
-    glTranslatef(1.08f, hullR + 0.45f, 0);
-    glColor3fv(hullBlack);
-    glRotatef(-18, 0, 0, 1);
-    glScalef(0.22f, 1.0f, 0.52f);
-    drawCube(1.0f);
-    glPopMatrix();
-    // Sail top cap + bridge windows slit
-    glPushMatrix();
-    glTranslatef(0.45f, hullR + 1.13f, 0);
     glColor3f(0.10f, 0.10f, 0.11f);
-    glScalef(1.15f, 0.06f, 0.5f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(0.95f, hullR + 0.85f, 0);
-    glColor3f(0.05f, 0.12f, 0.16f);
-    glScalef(0.06f, 0.18f, 0.40f);
-    drawCube(1.0f);
-    glPopMatrix();
-
-    // ---- Periscope + communication masts (tall thin, diff heights) ----
-    float mastX[] = { 0.25f, 0.45f, 0.65f, 0.85f };
-    float mastH[] = { 1.05f, 0.80f, 0.95f, 0.60f };
-    for (int m = 0; m < 4; m++) {
+    for (int i = 0; i < 3; i++) {
         glPushMatrix();
-        glTranslatef(mastX[m], hullR + 1.1f, 0);
-        glColor3f(0.16f, 0.16f, 0.17f);
-        drawCylinder(0.035f, mastH[m], 8);
-        // mast head
-        glTranslatef(0, mastH[m], 0);
-        if (m == 0) { // periscope head
-            glRotatef(90, 0, 1, 0);
-            glColor3f(0.18f, 0.18f, 0.19f);
-            drawCylinder(0.035f, 0.28f, 8);
-        } else if (m == 3) { // radar bar
-            glColor3f(0.18f, 0.18f, 0.19f);
-            glScalef(0.30f, 0.04f, 0.06f);
-            drawCube(1.0f);
-        } else {
-            glColor3f(0.20f, 0.20f, 0.21f);
-            drawSphere(0.045f, 8, 6);
-        }
-        glPopMatrix();
-    }
-    // Small whip antenna
-    glPushMatrix();
-    glTranslatef(0.05f, hullR + 1.1f, 0.12f);
-    glColor3f(0.1f, 0.1f, 0.1f);
-    drawCylinder(0.008f, 0.9f, 6);
-    glPopMatrix();
-
-    // ---- Sail planes (small wings on sail sides) ----
-    for (int s = -1; s <= 1; s += 2) {
-        glPushMatrix();
-        glTranslatef(0.35f, hullR + 0.35f, s * 0.55f);
-        glColor3fv(hullBlack);
-        glScalef(0.55f, 0.07f, 0.55f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-
-    // ---- Bow planes (retractable dive planes near bow) ----
-    for (int s = -1; s <= 1; s += 2) {
-        glPushMatrix();
-        glTranslatef(2.1f, -0.15f, s * 1.0f);
-        glColor3fv(hullBlack);
-        glScalef(0.45f, 0.06f, 0.60f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-
-    // ---- Sonar chin windows (bottom bow, dark glass) ----
-    glPushMatrix();
-    glTranslatef(2.15f, -0.55f, 0);
-    glColor3f(0.04f, 0.10f, 0.14f);
-    glScalef(0.55f, 0.22f, 0.55f);
-    drawSphere(0.5f, 14, 8);
-    glPopMatrix();
-
-    // ---- Twin bow searchlight housings (from ref: 2 bright front lights) ----
-    for (int s = -1; s <= 1; s += 2) {
-        glPushMatrix();
-        glTranslatef(3.15f, 0.10f, s * 0.48f);
-        glColor3f(0.10f, 0.10f, 0.11f);
+        glTranslatef(1.2f - i * 1.1f, 0, 0);
         glRotatef(90, 0, 1, 0);
-        drawCylinder(0.13f, 0.18f, 12);
-        // lens
-        glTranslatef(0, 0, 0.19f);
-        if (sub.headlightsOn) glColor3f(1.0f, 0.97f, 0.85f);
-        else glColor3f(0.35f, 0.36f, 0.38f);
-        drawDisk(0.0f, 0.11f, 14);
-        // glow halo when ON
-        if (sub.headlightsOn) {
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-            glColor4f(1.0f, 0.95f, 0.75f, 0.35f);
-            drawSphere(0.16f, 10, 8);
-            glDisable(GL_BLEND);
-        }
+        drawTorus(0.008f, hullR + 0.004f, 6, 36);
         glPopMatrix();
     }
 
-    // ---- Side porthole row (small, dark - military, not big windows) ----
-    glColor3f(0.05f, 0.11f, 0.15f);
-    for (int i = 0; i < 4; i++) {
-        glPushMatrix();
-        glTranslatef(0.9f - i * 0.7f, 0.15f, 0.985f);
-        drawDisk(0.0f, 0.07f, 12);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(0.9f - i * 0.7f, 0.15f, -0.985f);
-        glRotatef(180, 0, 1, 0);
-        drawDisk(0.0f, 0.07f, 12);
-        glPopMatrix();
-    }
+    glPushMatrix();
+    glTranslatef(0.9f, hullR - 0.03f, 0);
+    glColor3f(0.12f, 0.12f, 0.13f);
+    glScalef(1.4f, 0.05f, 0.34f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-1.1f, hullR - 0.03f, 0);
+    glColor3f(0.12f, 0.12f, 0.13f);
+    glScalef(0.9f, 0.05f, 0.30f);
+    drawCube(1.0f);
+    glPopMatrix();
 
-    // ---- Stern stabilizers + cruciform rudder (like ref bottom row) ----
-    // Horizontal stern planes
     for (int s = -1; s <= 1; s += 2) {
+        float zside = s * 0.97f;
         glPushMatrix();
-        glTranslatef(-3.55f, 0.0f, s * 0.75f);
-        glColor3fv(hullBlack);
-        glScalef(0.70f, 0.08f, 0.85f);
+        glTranslatef(-0.2f, 0.05f, zside);
+        if (s < 0) glRotatef(180, 0, 1, 0);
+        glColor3f(0.75f, 0.72f, 0.60f);
+        glScalef(0.55f, 0.22f, 0.02f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(1.15f, 0.18f, zside * 0.99f);
+        if (s < 0) glRotatef(180, 0, 1, 0);
+        glColor3f(0.70f, 0.70f, 0.70f);
+        glScalef(0.34f, 0.10f, 0.02f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(-1.4f, 0.10f, zside * 0.99f);
+        if (s < 0) glRotatef(180, 0, 1, 0);
+        glColor3f(0.16f, 0.25f, 0.55f);
+        glScalef(0.12f, 0.16f, 0.02f);
         drawCube(1.0f);
         glPopMatrix();
     }
-    // Upper vertical rudder (tall)
-    glPushMatrix();
-    glTranslatef(-3.60f, 0.75f, 0);
-    glColor3fv(hullBlack);
-    glScalef(0.70f, 1.10f, 0.08f);
-    drawCube(1.0f);
-    glPopMatrix();
-    // Lower vertical rudder
-    glPushMatrix();
-    glTranslatef(-3.60f, -0.60f, 0);
-    glColor3fv(hullBlack);
-    glScalef(0.65f, 0.80f, 0.08f);
-    drawCube(1.0f);
-    glPopMatrix();
 
-    // ---- Keel line ----
     glPushMatrix();
-    glTranslatef(-0.2f, -hullR + 0.02f, 0);
-    glColor3f(0.08f, 0.08f, 0.09f);
-    glScalef(4.2f, 0.06f, 0.14f);
+    glTranslatef(-0.1f, hullR + 0.32f, 0);
+    glColor3fv(hullDark);
+    glScalef(2.30f, 0.68f, 0.62f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(1.0f, hullR + 0.28f, 0);
+    glColor3fv(hullDark);
+    glRotatef(-20, 0, 0, 1);
+    glScalef(0.30f, 0.62f, 0.58f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-0.1f, hullR + 0.68f, 0);
+    glColor3f(0.10f, 0.10f, 0.11f);
+    glScalef(2.20f, 0.07f, 0.56f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-1.15f, hullR + 0.28f, 0);
+    glColor3fv(hullDark);
+    glRotatef(22, 0, 0, 1);
+    glScalef(0.28f, 0.60f, 0.56f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-0.1f, hullR + 0.72f, 0);
+    glRotatef(90, 0, 1, 0);
+    glColor3f(0.13f, 0.13f, 0.14f);
+    drawCylinder(0.06f, 2.10f, 12);
+    glPopMatrix();
+    for (int s = -1; s <= 1; s += 2) {
+        glPushMatrix();
+        glTranslatef(-0.35f, hullR + 0.42f, s * 0.32f);
+        if (s < 0) glRotatef(180, 0, 1, 0);
+        glColor3f(0.04f, 0.07f, 0.09f);
+        drawDisk(0.0f, 0.09f, 12);
+        glPopMatrix();
+    }
+    glDisable(GL_LIGHTING);
+    glPushMatrix();
+    glTranslatef(0.75f, hullR + 0.76f, 0);
+    glColor3f(1.0f, 0.22f, 0.12f);
+    drawSphere(0.09f, 10, 8);
+    glColor4f(1.0f, 0.25f, 0.12f, 0.5f);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    drawSphere(0.16f, 10, 8);
+    glDisable(GL_BLEND);
+    glPopMatrix();
+    glEnable(GL_LIGHTING);
+
+    float mastX2[] = { -0.55f, -0.33f };
+    float mastH2[] = { 2.20f, 1.70f };
+    float mastR2[] = { 0.030f, 0.025f };
+    for (int m = 0; m < 2; m++) {
+        glPushMatrix();
+        glTranslatef(mastX2[m], hullR + 0.40f, 0);
+        glColor3f(0.13f, 0.13f, 0.14f);
+        drawCylinder(mastR2[m], mastH2[m], 8);
+        glTranslatef(0, mastH2[m], 0);
+        glColor3f(0.16f, 0.16f, 0.17f);
+        drawSphere(mastR2[m] + 0.01f, 8, 6);
+        glPopMatrix();
+    }
+
+    glPushMatrix();
+    glTranslatef(3.72f, 0.02f, 0);
+    glColor3f(0.62f, 0.63f, 0.65f);
+    glScalef(0.20f, 0.20f, 1.10f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glDisable(GL_LIGHTING);
+    glPushMatrix();
+    glTranslatef(3.84f, 0.02f, 0);
+    float boost = sub.headlightsOn ? 1.0f : 0.55f;
+    glColor3f(1.0f * boost, 0.28f * boost, 0.10f * boost);
+    glScalef(0.08f, 0.10f, 0.96f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glPushMatrix();
+    glTranslatef(3.86f, 0.02f, 0);
+    glColor4f(1.0f, 0.30f, 0.12f, 0.45f * boost);
+    glScalef(0.14f, 0.20f, 1.15f);
+    drawSphere(1.0f, 12, 8);
+    glPopMatrix();
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+
+    for (int s = -1; s <= 1; s += 2) {
+        glPushMatrix();
+        glTranslatef(-3.75f, 0.0f, s * 0.45f);
+        glRotatef(14, 0, 0, s);
+        glColor3fv(hullDark);
+        glScalef(0.70f, 0.05f, 0.60f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+    glPushMatrix();
+    glTranslatef(-3.80f, 0.45f, 0);
+    glRotatef(18, 0, 0, 1);
+    glColor3fv(hullDark);
+    glScalef(0.70f, 0.75f, 0.05f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-3.80f, -0.38f, 0);
+    glRotatef(-18, 0, 0, 1);
+    glColor3fv(hullDark);
+    glScalef(0.65f, 0.60f, 0.05f);
     drawCube(1.0f);
     glPopMatrix();
 }
@@ -741,7 +798,7 @@ void drawPropeller() {
     glTranslatef(-4.35f, 0.0f, 0.0f);
     glRotatef(sub.propellerAngle, 1, 0, 0);
 
-    glColor3f(0.45f, 0.36f, 0.18f);
+    glColor3f(0.32f, 0.26f, 0.14f);
     drawSphere(0.12f, 10, 8);
     glPushMatrix();
     glTranslatef(-0.10f, 0, 0);
@@ -755,8 +812,8 @@ void drawPropeller() {
         glTranslatef(0, 0.32f, 0);
         glRotatef(32, 0, 0, 1);
         glRotatef(18, 1, 0, 0);
-        glColor3f(0.50f, 0.40f, 0.20f);
-        glScalef(0.06f, 0.42f, 0.20f);
+        glColor3f(0.36f, 0.29f, 0.15f);
+        glScalef(0.05f, 0.36f, 0.17f);
         drawCube(1.0f);
         glPopMatrix();
     }
@@ -770,53 +827,55 @@ void drawPropeller() {
     glPopMatrix();
 }
 
-void drawSubmarineHeadlights() {
-    if (!sub.headlightsOn) return;
-
-    // Headlight glow
+void setupSubHeadlight() {
+    if (!sub.headlightsOn) { glDisable(GL_LIGHT2); return; }
+    float yawRad = sub.yaw * DEG_TO_RAD;
+    float pitchRad = sub.pitch * DEG_TO_RAD;
+    float cp = cos(pitchRad);
+    float fx = cos(yawRad) * cp;
+    float fy = sin(pitchRad);
+    float fz = -sin(yawRad) * cp;
+    float bx = sub.x + fx * BOW_TIP;
+    float by = sub.y + fy * BOW_TIP;
+    float bz = sub.z + fz * BOW_TIP;
+    GLfloat pos2[] = { bx, by, bz, 1.0f };
+    GLfloat dir2[] = { fx, fy, fz };
+    GLfloat amb2[] = { 0.15f, 0.15f, 0.10f, 1.0f };
+    GLfloat diff2[] = { 1.0f, 0.95f, 0.80f, 1.0f };
+    GLfloat spec2[] = { 1.0f, 1.0f, 0.90f, 1.0f };
     glEnable(GL_LIGHT2);
-    GLfloat pos2[] = { 3.0f, 0.0f, 0.0f, 1.0f };
-    GLfloat dir2[] = { 1.0f, 0.0f, 0.0f };
-    GLfloat amb2[] = { 0.1f, 0.1f, 0.05f, 1.0f };
-    GLfloat diff2[] = { 1.0f, 0.95f, 0.8f, 1.0f };
-    GLfloat spec2[] = { 1.0f, 1.0f, 0.9f, 1.0f };
-
-    glPushMatrix();
-    glTranslatef(sub.x, sub.y, sub.z);
-    glRotatef(sub.yaw, 0, 1, 0);
-    glRotatef(sub.pitch, 0, 0, 1);
-
     glLightfv(GL_LIGHT2, GL_POSITION, pos2);
     glLightfv(GL_LIGHT2, GL_SPOT_DIRECTION, dir2);
-    glPopMatrix();
-
     glLightfv(GL_LIGHT2, GL_AMBIENT, amb2);
     glLightfv(GL_LIGHT2, GL_DIFFUSE, diff2);
     glLightfv(GL_LIGHT2, GL_SPECULAR, spec2);
-    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 30.0f);
-    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 8.0f);
-    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.5f);
-    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.08f);
-    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.01f);
+    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 28.0f);
+    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 10.0f);
+    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.4f);
+    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.05f);
+    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.008f);
+}
 
-    // Visual light cones
+void drawHeadlightBeam(float lx, float ly, float lz, float len, float farR) {
     glPushMatrix();
-    glTranslatef(sub.x, sub.y, sub.z);
-    glRotatef(sub.yaw, 0, 1, 0);
-    glRotatef(sub.pitch, 0, 0, 1);
-
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glColor4f(1.0f, 0.95f, 0.7f, 0.08f);
-
-    glPushMatrix();
-    glTranslatef(3.0f, 0, 0);
+    glTranslatef(lx, ly, lz);
     glRotatef(90, 0, 1, 0);
-    drawCone(1.5f, 5.0f, 16);
+    GLUquadric* q = gluNewQuadric();
+    gluQuadricNormals(q, GLU_SMOOTH);
+    gluCylinder(q, 0.12f, farR, len, 14, 1);
+    gluDeleteQuadric(q);
     glPopMatrix();
+}
 
+void drawSubmarineHeadlights() {
+    if (!sub.headlightsOn) return;
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glColor4f(1.0f, 0.45f, 0.20f, 0.14f);
+    drawHeadlightBeam(3.88f, 0.02f, 0.0f, 9.0f, 2.0f);
     glDisable(GL_BLEND);
-    glPopMatrix();
+    glEnable(GL_LIGHTING);
 }
 
 void drawFullSubmarine() {
@@ -825,8 +884,8 @@ void drawFullSubmarine() {
     glRotatef(sub.yaw, 0, 1, 0);
     glRotatef(sub.pitch, 0, 0, 1);
     glRotatef(sub.roll, 1, 0, 0);
+    glScalef(SUB_SCALE * SUB_LEN, SUB_SCALE, SUB_SCALE);
 
-    // Brushed-metal plating texture on the hull (falls back to plain colors)
     bool hullTex = (texHull != 0);
     if (hullTex) { glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texHull); }
     drawSubmarineBody();
@@ -1339,6 +1398,105 @@ void drawFish() {
     }
 }
 
+void drawSharks() {
+    for (size_t i = 0; i < sharks.size(); i++) {
+        Shark& s = sharks[i];
+        float sx = s.cx + cos(s.angle) * s.radius;
+        float sz = s.cz + sin(s.angle) * s.radius;
+        glPushMatrix();
+        glTranslatef(sx, s.cy, sz);
+        glRotatef(-(s.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
+        float tailWag = sin(introTimer * 0.004f + i * 2.0f) * 12.0f;
+        glColor3f(0.45f, 0.52f, 0.58f);
+        glScalef(s.size * 1.6f, s.size * 0.42f, s.size * 0.5f);
+        drawSphere(1.0f, 12, 8);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(sx, s.cy, sz);
+        glRotatef(-(s.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
+        glColor3f(0.42f, 0.49f, 0.55f);
+        glPushMatrix();
+        glTranslatef(-s.size * 1.7f, s.size * 0.1f, 0);
+        glRotatef(tailWag, 0, 1, 0);
+        glScalef(s.size * 0.5f, s.size * 0.55f, s.size * 0.08f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(-s.size * 0.1f, s.size * 0.55f, 0);
+        glScalef(s.size * 0.45f, s.size * 0.55f, s.size * 0.08f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(s.size * 0.35f, -s.size * 0.25f, s.size * 0.35f);
+        glRotatef(25, 1, 0, 0);
+        glScalef(s.size * 0.55f, s.size * 0.08f, s.size * 0.3f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(s.size * 0.35f, -s.size * 0.25f, -s.size * 0.35f);
+        glRotatef(-25, 1, 0, 0);
+        glScalef(s.size * 0.55f, s.size * 0.08f, s.size * 0.3f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPopMatrix();
+    }
+}
+
+void drawRays() {
+    for (size_t i = 0; i < rays.size(); i++) {
+        Ray& r = rays[i];
+        float rx = r.cx + cos(r.angle) * r.radius;
+        float rz = r.cz + sin(r.angle) * r.radius;
+        float flap = sin(introTimer * 0.003f + r.phase) * 0.12f;
+        glPushMatrix();
+        glTranslatef(rx, r.cy + flap * 2.0f, rz);
+        glRotatef(-(r.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
+        glColor3f(0.25f, 0.30f, 0.36f);
+        glScalef(r.size * 1.1f, r.size * 0.12f + fabs(flap) * 0.4f, r.size * 0.95f);
+        drawSphere(1.0f, 12, 8);
+        glColor3f(0.20f, 0.24f, 0.30f);
+        glPushMatrix();
+        glTranslatef(-r.size * 1.2f, 0, 0);
+        glRotatef(90, 0, 1, 0);
+        drawCylinder(0.02f * r.size, r.size * 1.6f, 6);
+        glPopMatrix();
+        glPopMatrix();
+    }
+}
+
+void drawKelp() {
+    float t = introTimer * 0.002f;
+    for (size_t i = 0; i < kelp.size(); i++) {
+        Kelp& k = kelp[i];
+        float lean = sin(t + k.phase) * 4.0f;
+        glPushMatrix();
+        glTranslatef(k.x, -16.0f, k.z);
+        glRotatef(lean, 0, 0, 1);
+        glColor3f(0.20f, 0.30f, 0.06f);
+        drawCylinder(0.09f, k.h, 6);
+        for (int L = 0; L < 3; L++) {
+            float ly = k.h * (0.30f + 0.22f * L);
+            for (int s = -1; s <= 1; s += 2) {
+                glPushMatrix();
+                glTranslatef(0, ly, 0);
+                glRotatef(s * (32.0f + L * 5.0f), 0, 0, 1);
+                glRotatef((L * 47 + s * 30), 0, 1, 0);
+                if ((L + s) % 2 == 0) glColor3f(0.42f, 0.46f, 0.09f);
+                else glColor3f(0.28f, 0.38f, 0.07f);
+                glScalef(1.0f, 1.0f, 0.25f);
+                drawCone(0.08f, 0.7f + L * 0.1f, 5);
+                glPopMatrix();
+            }
+        }
+        glPushMatrix();
+        glTranslatef(0, k.h, 0);
+        glColor3f(0.46f, 0.44f, 0.09f);
+        drawCone(0.09f, 0.9f, 5);
+        glPopMatrix();
+        glPopMatrix();
+    }
+}
+
 void drawBubbles() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1388,7 +1546,7 @@ void drawLightRays() {
     // Fade rays as the boat goes very deep
     float depthFade = 1.0f - fabs(sub.depth - 8.0f) / 25.0f;
     if (depthFade < 0.15f) depthFade = 0.15f;
-    float a = 0.10f * strength * depthFade;
+    float a = 0.04f * strength * depthFade;
 
     glDisable(GL_LIGHTING);
     glDisable(GL_DEPTH_TEST);
@@ -1398,8 +1556,8 @@ void drawLightRays() {
     for (int i = 0; i < 7; i++) {
         float rx = -14.0f + i * 5.5f + sin(t * 1.3f + i * 2.1f) * 1.2f;
         float rz = -12.0f + (i % 3) * 7.0f;
-        float topW = 2.2f + (i % 3) * 0.8f;
-        float botW = 5.5f + (i % 4) * 1.2f;
+        float topW = 1.1f + (i % 3) * 0.4f;
+        float botW = 2.6f + (i % 4) * 0.6f;
         float sway = sin(t * 0.9f + i) * 1.5f;
         glBegin(GL_QUADS);
         glColor4f(0.45f, 0.75f, 0.95f, 0.0f);
@@ -1664,19 +1822,19 @@ void drawHUD() {
     // Top-left info panel
     glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
     glBegin(GL_QUADS);
-    glVertex2f(10, windowHeight - 10);
-    glVertex2f(280, windowHeight - 10);
-    glVertex2f(280, windowHeight - 170);
-    glVertex2f(10, windowHeight - 170);
+    glVertex2f(60, windowHeight - 270);
+    glVertex2f(270, windowHeight - 270);
+    glVertex2f(270, windowHeight - 420);
+    glVertex2f(60, windowHeight - 420);
     glEnd();
 
     // Border
     glColor4f(0.0f, 0.8f, 0.8f, 0.8f);
     glBegin(GL_LINE_LOOP);
-    glVertex2f(10, windowHeight - 10);
-    glVertex2f(280, windowHeight - 10);
-    glVertex2f(280, windowHeight - 170);
-    glVertex2f(10, windowHeight - 170);
+    glVertex2f(60, windowHeight - 270);
+    glVertex2f(270, windowHeight - 270);
+    glVertex2f(270, windowHeight - 420);
+    glVertex2f(60, windowHeight - 420);
     glEnd();
 
     // Info text
@@ -1684,69 +1842,150 @@ void drawHUD() {
     char buf[128];
 
     sprintf(buf, "DEPTH: %.0f m", fabs(sub.depth));
-    drawText(20, windowHeight - 35, buf, GLUT_BITMAP_HELVETICA_18);
+    drawText(70, windowHeight - 294, buf, GLUT_BITMAP_HELVETICA_12);
 
     sprintf(buf, "SPEED: %.1f knots", sub.speed * 20.0f);
-    drawText(20, windowHeight - 60, buf, GLUT_BITMAP_HELVETICA_18);
+    drawText(70, windowHeight - 316, buf, GLUT_BITMAP_HELVETICA_12);
 
     sprintf(buf, "LIGHT: %s", sub.headlightsOn ? "ON" : "OFF");
-    drawText(20, windowHeight - 85, buf, GLUT_BITMAP_HELVETICA_18);
+    drawText(70, windowHeight - 338, buf, GLUT_BITMAP_HELVETICA_12);
 
     sprintf(buf, "ENGINE: %s", fabs(sub.speed) > 0.01f ? "ACTIVE" : "IDLE");
-    drawText(20, windowHeight - 110, buf, GLUT_BITMAP_HELVETICA_18);
+    drawText(70, windowHeight - 360, buf, GLUT_BITMAP_HELVETICA_12);
 
     sprintf(buf, "CAMERA: %s", cameraNames[cameraMode]);
-    drawText(20, windowHeight - 135, buf, GLUT_BITMAP_HELVETICA_18);
+    drawText(70, windowHeight - 382, buf, GLUT_BITMAP_HELVETICA_12);
 
     sprintf(buf, "MISSION: %s", missionNames[currentMission]);
-    drawText(20, windowHeight - 160, buf, GLUT_BITMAP_HELVETICA_18);
+    drawText(70, windowHeight - 404, buf, GLUT_BITMAP_HELVETICA_12);
 
     // Bottom center - mission timer
     glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
     glBegin(GL_QUADS);
-    glVertex2f(windowWidth / 2 - 100, 50);
-    glVertex2f(windowWidth / 2 + 100, 50);
-    glVertex2f(windowWidth / 2 + 100, 10);
-    glVertex2f(windowWidth / 2 - 100, 10);
+    glVertex2f(windowWidth / 2 - 100, 114);
+    glVertex2f(windowWidth / 2 + 100, 114);
+    glVertex2f(windowWidth / 2 + 100, 74);
+    glVertex2f(windowWidth / 2 - 100, 74);
     glEnd();
 
     glColor4f(0.0f, 0.8f, 0.8f, 0.8f);
     glBegin(GL_LINE_LOOP);
-    glVertex2f(windowWidth / 2 - 100, 50);
-    glVertex2f(windowWidth / 2 + 100, 50);
-    glVertex2f(windowWidth / 2 + 100, 10);
-    glVertex2f(windowWidth / 2 - 100, 10);
+    glVertex2f(windowWidth / 2 - 100, 114);
+    glVertex2f(windowWidth / 2 + 100, 114);
+    glVertex2f(windowWidth / 2 + 100, 74);
+    glVertex2f(windowWidth / 2 - 100, 74);
     glEnd();
 
     glColor3f(0.0f, 0.9f, 0.9f);
     int mins = (int)(missionTimer / 60.0f);
     int secs = (int)missionTimer % 60;
     sprintf(buf, "TIME: %02d:%02d", mins, secs);
-    drawText(windowWidth / 2 - 35, 25, buf, GLUT_BITMAP_HELVETICA_18);
+    drawText(windowWidth / 2 - 35, 89, buf, GLUT_BITMAP_HELVETICA_18);
 
     // Controls hint - bottom right
     glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
     glBegin(GL_QUADS);
-    glVertex2f(windowWidth - 250, 100);
-    glVertex2f(windowWidth - 10, 100);
-    glVertex2f(windowWidth - 10, 10);
-    glVertex2f(windowWidth - 250, 10);
+    glVertex2f(windowWidth - 314, 164);
+    glVertex2f(windowWidth - 74, 164);
+    glVertex2f(windowWidth - 74, 74);
+    glVertex2f(windowWidth - 314, 74);
     glEnd();
 
     glColor4f(0.0f, 0.8f, 0.8f, 0.8f);
     glBegin(GL_LINE_LOOP);
-    glVertex2f(windowWidth - 250, 100);
-    glVertex2f(windowWidth - 10, 100);
-    glVertex2f(windowWidth - 10, 10);
-    glVertex2f(windowWidth - 250, 10);
+    glVertex2f(windowWidth - 314, 164);
+    glVertex2f(windowWidth - 74, 164);
+    glVertex2f(windowWidth - 74, 74);
+    glVertex2f(windowWidth - 314, 74);
     glEnd();
 
     glColor3f(0.7f, 0.7f, 0.7f);
-    drawText(windowWidth - 240, 85, "W/S: Fwd/Bwd  A/D: Turn", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 240, 70, "R/F: Up/Down  Q/E: Roll", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 240, 55, "L: Lights  C: Camera", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 240, 40, "Space: Stop  ESC: Exit", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 240, 25, "Mouse: Orbit (Ext view)", GLUT_BITMAP_HELVETICA_12);
+    drawText(windowWidth - 304, 149, "W/S: Fwd/Bwd  A/D: Turn", GLUT_BITMAP_HELVETICA_12);
+    drawText(windowWidth - 304, 134, "R/F: Up/Down  Q/E: Roll", GLUT_BITMAP_HELVETICA_12);
+    drawText(windowWidth - 304, 119, "L: Lights  C: Camera", GLUT_BITMAP_HELVETICA_12);
+    drawText(windowWidth - 304, 104, "Space: Stop  ESC: Exit", GLUT_BITMAP_HELVETICA_12);
+    drawText(windowWidth - 304, 89, "Mouse: Orbit (Ext view)", GLUT_BITMAP_HELVETICA_12);
+
+    glDisable(GL_BLEND);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void drawViewportBorder() {
+    if (gameState != STATE_PLAYING) return;
+    if (cameraMode != CAM_INTERIOR && cameraMode != CAM_FRONT_WINDOW &&
+        cameraMode != CAM_LEFT_WINDOW && cameraMode != CAM_RIGHT_WINDOW &&
+        cameraMode != CAM_CONTROL_SCREEN) return;
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(0, windowWidth, 0, windowHeight);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    float W = (float)windowWidth, H = (float)windowHeight;
+    float S = 44.0f;
+    float T = 44.0f;
+    float B = 44.0f;
+    float R = 200.0f;
+    if (R > W * 0.25f) R = W * 0.25f;
+    float Cy = H - T - R;
+
+    glColor4f(0.005f, 0.012f, 0.030f, 0.96f);
+    glBegin(GL_QUADS);
+    glVertex2f(0, H - T); glVertex2f(W, H - T);
+    glVertex2f(W, H); glVertex2f(0, H);
+    glVertex2f(0, 0); glVertex2f(W, 0);
+    glVertex2f(W, B); glVertex2f(0, B);
+    glVertex2f(0, B); glVertex2f(S, B);
+    glVertex2f(S, Cy); glVertex2f(0, Cy);
+    glVertex2f(W - S, B); glVertex2f(W, B);
+    glVertex2f(W, Cy); glVertex2f(W - S, Cy);
+    glEnd();
+
+    const int N = 24;
+    glBegin(GL_QUADS);
+    for (int i = 0; i < N; i++) {
+        float dy0 = R * i / N, dy1 = R * (i + 1) / N;
+        float y0 = Cy + dy0, y1 = Cy + dy1;
+        float xl0 = S + R - sqrt(R * R - dy0 * dy0);
+        float xl1 = S + R - sqrt(R * R - dy1 * dy1);
+        glVertex2f(0, y0); glVertex2f(xl0, y0);
+        glVertex2f(xl1, y1); glVertex2f(0, y1);
+        glVertex2f(W, y0); glVertex2f(W - xl0, y0);
+        glVertex2f(W - xl1, y1); glVertex2f(W, y1);
+    }
+    glEnd();
+
+    glLineWidth(2.0f);
+    glColor4f(0.35f, 0.70f, 0.85f, 0.55f);
+    glBegin(GL_LINE_STRIP);
+    glVertex2f(S, B);
+    glVertex2f(S, Cy);
+    for (int i = 0; i <= N; i++) {
+        float a = PI - (PI * 0.5f) * i / N;
+        glVertex2f(S + R + R * cos(a), Cy + R * sin(a));
+    }
+    glVertex2f(W - S - R, H - T);
+    for (int i = 0; i <= N; i++) {
+        float a = (PI * 0.5f) - (PI * 0.5f) * i / N;
+        glVertex2f(W - S - R + R * cos(a), Cy + R * sin(a));
+    }
+    glVertex2f(W - S, B);
+    glVertex2f(S, B);
+    glEnd();
 
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
@@ -1770,22 +2009,22 @@ void setupLighting() {
     glEnable(GL_NORMALIZE);
 
     glShadeModel(GL_SMOOTH);
-    GLfloat matSpec[] = { 0.55f, 0.55f, 0.6f, 1.0f };
+    GLfloat matSpec[] = { 0.70f, 0.70f, 0.75f, 1.0f };
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
-    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 55.0f);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 90.0f);
 
     // Bright day ambient on surface, dark blue ambient when deep
     float diveBlend = 1.0f - diveTransition;
     GLfloat globalAmbient[] = {
-        0.45f * diveBlend + 0.05f,
-        0.45f * diveBlend + 0.05f,
-        0.50f * diveBlend + 0.08f, 1.0f };
+        0.45f * diveBlend + 0.22f,
+        0.45f * diveBlend + 0.25f,
+        0.50f * diveBlend + 0.30f, 1.0f };
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
 
     // Key sun from FRONT-LEFT-TOP (camera side +Z) so visible hull is lit
     GLfloat sunPos[] = { -30.0f, 28.0f, 35.0f, 0.0f };
-    GLfloat sunAmb[] = { 0.35f * diveBlend + 0.02f, 0.33f * diveBlend + 0.02f, 0.30f * diveBlend + 0.03f, 1.0f };
-    GLfloat sunDiff[] = { 1.15f * diveBlend + 0.05f, 1.05f * diveBlend + 0.05f, 0.95f * diveBlend + 0.05f, 1.0f };
+    GLfloat sunAmb[] = { 0.35f * diveBlend + 0.15f, 0.33f * diveBlend + 0.15f, 0.30f * diveBlend + 0.16f, 1.0f };
+    GLfloat sunDiff[] = { 1.15f * diveBlend + 0.35f, 1.05f * diveBlend + 0.35f, 0.95f * diveBlend + 0.35f, 1.0f };
     GLfloat sunSpec[] = { 0.7f * diveBlend, 0.7f * diveBlend, 0.65f * diveBlend, 1.0f };
 
     glLightfv(GL_LIGHT0, GL_POSITION, sunPos);
@@ -1793,10 +2032,11 @@ void setupLighting() {
     glLightfv(GL_LIGHT0, GL_DIFFUSE, sunDiff);
     glLightfv(GL_LIGHT0, GL_SPECULAR, sunSpec);
 
-    // Submarine hull light (follows sub)
+    // Submarine hull light (follows sub, strengthens with depth)
+    float uw = diveTransition;
     GLfloat subPos[] = { sub.x, sub.y + 0.5f, sub.z, 1.0f };
-    GLfloat subAmb[] = { 0.05f, 0.05f, 0.08f, 1.0f };
-    GLfloat subDiff[] = { 0.15f, 0.15f, 0.25f, 1.0f };
+    GLfloat subAmb[] = { 0.05f + 0.14f * uw, 0.05f + 0.15f * uw, 0.08f + 0.18f * uw, 1.0f };
+    GLfloat subDiff[] = { 0.15f + 0.60f * uw, 0.15f + 0.65f * uw, 0.25f + 0.70f * uw, 1.0f };
 
     glLightfv(GL_LIGHT1, GL_POSITION, subPos);
     glLightfv(GL_LIGHT1, GL_AMBIENT, subAmb);
@@ -1820,9 +2060,9 @@ void setupFog() {
     glEnable(GL_FOG);
     glFogi(GL_FOG_MODE, GL_EXP2);
     // Natural deep-sea blue, not black: shallow teal -> deep navy
-    GLfloat fogColor[] = { 0.02f * diveBlend, 0.22f * diveBlend + 0.01f, 0.38f * diveBlend + 0.02f, 1.0f };
+    GLfloat fogColor[] = { 0.10f * diveBlend, 0.45f * diveBlend + 0.02f, 0.70f * diveBlend + 0.04f, 1.0f };
     glFogfv(GL_FOG_COLOR, fogColor);
-    glFogf(GL_FOG_DENSITY, 0.028f * diveBlend);
+    glFogf(GL_FOG_DENSITY, 0.015f * diveBlend);
     glHint(GL_FOG_HINT, GL_DONT_CARE);
 }
 
@@ -1842,14 +2082,14 @@ void setupCamera() {
         // Sub lies along X (bow +X), so camera sits off +Z side.
         float t = introTimer * 0.001f;
         float pushIn = 1.0f - diveTransition * 0.4f;
-        float camX = sub.x + 3.2f + sin(t * 0.4f) * 0.6f;
-        float camY = sub.y + 2.1f * pushIn + sin(t * 0.6f) * 0.15f;
-        float camZ = sub.z + 10.5f * pushIn;
+        float camX = sub.x + 4.2f + sin(t * 0.4f) * 0.8f;
+        float camY = sub.y + 2.8f * pushIn + sin(t * 0.6f) * 0.2f;
+        float camZ = sub.z + 14.0f * pushIn;
         float lookX = sub.x + 0.3f;
         float lookY = sub.y + 0.6f - diveTransition * 4.0f;
         if (diveTransition > 0.4f) {
-            camY = sub.y + 2.5f;
-            camZ = sub.z + 9.0f;
+            camY = sub.y + 3.3f;
+            camZ = sub.z + 12.0f;
             lookY = sub.y + 0.3f;
         }
         gluLookAt(camX, camY, camZ, lookX, lookY, sub.z, 0, 1, 0);
@@ -1961,9 +2201,9 @@ void updateSubmarine() {
     if (fabs(sub.speed) > 0.01f && diveTransition > 0.3f) {
         if (rand() % 100 < 30) {
             Bubble b;
-            b.x = sub.x - cos(yawRad) * 2.5f + (rand() % 100 - 50) * 0.005f;
+            b.x = sub.x - cos(yawRad) * 7.5f + (rand() % 100 - 50) * 0.005f;
             b.y = sub.y + (rand() % 100 - 50) * 0.01f;
-            b.z = sub.z + sin(yawRad) * 2.5f + (rand() % 100 - 50) * 0.005f;
+            b.z = sub.z + sin(yawRad) * 7.5f + (rand() % 100 - 50) * 0.005f;
             b.speed = 0.02f + (rand() % 100) * 0.0003f;
             b.size = 0.03f + (rand() % 100) * 0.001f;
             b.wobble = 0.1f + (rand() % 100) * 0.003f;
@@ -2017,9 +2257,18 @@ void updateSubmarine() {
         float sdx = f.x - sub.x;
         float sdz = f.z - sub.z;
         float sdDist = sqrt(sdx * sdx + sdz * sdz);
-        if (sdDist < 3.0f) {
+        if (sdDist < 4.5f) {
             f.angle = atan2(sdz, sdx);
         }
+    }
+
+    // Update sharks and rays
+    for (size_t i = 0; i < sharks.size(); i++) {
+        sharks[i].angle += sharks[i].speed;
+    }
+    for (size_t i = 0; i < rays.size(); i++) {
+        rays[i].angle += rays[i].speed;
+        rays[i].phase += 0.02f;
     }
 
     // Update particles
@@ -2238,15 +2487,16 @@ void display() {
     float db = diveTransition;
     // Day sky blue -> shallow teal -> deep navy (matches ref 2, never black)
     float deepK = db * db; // ease into depth
-    glClearColor(0.52f * (1 - db) + 0.06f * db * (1 - deepK) + 0.01f * deepK,
-                 0.74f * (1 - db) + 0.35f * db * (1 - deepK) + 0.08f * deepK,
-                 0.94f * (1 - db) + 0.55f * db * (1 - deepK) + 0.22f * deepK, 1.0f);
+    glClearColor(0.52f * (1 - db) + 0.06f * db * (1 - deepK) + 0.05f * deepK,
+                 0.74f * (1 - db) + 0.35f * db * (1 - deepK) + 0.30f * deepK,
+                 0.94f * (1 - db) + 0.55f * db * (1 - deepK) + 0.60f * deepK, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
+    setupCamera();
     setupFog();
     setupLighting();
-    setupCamera();
+    setupSubHeadlight();
 
     // Draw environments
     if (diveTransition < 1.0f) {
@@ -2267,6 +2517,7 @@ void display() {
     if (diveTransition > 0.1f) {
         drawLightRays();
         drawSeaweed();
+        drawKelp();
         drawRocks();
         drawCoral();
         drawParticles();
@@ -2286,6 +2537,8 @@ void display() {
 
     // Draw marine life
     drawFish();
+    drawSharks();
+    drawRays();
     drawBubbles();
 
     // Overlays
@@ -2300,6 +2553,8 @@ void display() {
     if (gameState == STATE_PLAYING) {
         drawHUD();
     }
+
+    drawViewportBorder();
 
     glutSwapBuffers();
 }
@@ -2316,7 +2571,7 @@ void keyboardDown(unsigned char key, int x, int y) {
             case 0: // START MISSION
                 gameState = STATE_PLAYING;
                 currentMission = MISSION_DIVE;
-                cameraMode = CAM_INTERIOR;
+                cameraMode = CAM_EXTERNAL;
                 missionTimer = 0;
                 sub.x = 0; sub.y = -5.0f; sub.z = 0;
                 sub.depth = 5.0f;
