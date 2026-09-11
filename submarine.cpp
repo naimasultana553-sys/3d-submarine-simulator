@@ -60,6 +60,13 @@ const float SUB_SCALE = 1.4f;
 const float SUB_LEN = 1.5f;
 const float BOW_TIP = 3.9f * 1.4f * 1.5f;
 
+// Interior scale for crew room — geometry enlarged more than eye height
+// so the space genuinely feels bigger when walking around.
+const float INT_SX = 1.70f;   // stretch front-to-back (length)
+const float INT_SY = 1.30f;   // modest height increase
+const float INT_SZ = 1.50f;   // wider port-to-starboard
+const float INT_EYE = 0.52f;  // base eye height (unscaled, used as-is)
+
 // Camera State
 struct Camera {
     float orbitAngleH;
@@ -68,6 +75,9 @@ struct Camera {
     float freeX, freeY, freeZ;
     float freeYaw, freePitch;
 } cam;
+
+// Held keys for smooth first-person walking in the crew cabin
+bool walkKeys[256] = { false };
 
 // Mission System
 enum Mission { MISSION_DIVE = 0, MISSION_EXPLORE, MISSION_NAVIGATE, MISSION_OBSERVE, MISSION_RETURN, MISSION_COUNT };
@@ -565,14 +575,16 @@ void initEnvironment() {
 
     // Crew members
     crew.clear();
-    CrewMember c1 = { 0.3f, 0.2f, 0.5f, 0, 0, 0 };
-    CrewMember c2 = { -0.3f, 0.2f, 0.3f, 0, 0, 1 };
-    CrewMember c3 = { 0.0f, 0.2f, -0.2f, PI, 0, 2 };
-    CrewMember c4 = { -0.5f, 0.2f, -0.5f, PI * 0.5f, 0, 1 };
+    CrewMember c1 = { 0.22f, -0.10f, 0.62f, 0, 0, 0 };   // pilot 1 (starboard seat)
+    CrewMember c2 = { -1.05f, 0.22f, 0.30f, 0, 0, 1 };   // crew standing, starboard mess
+    CrewMember c3 = { 0.00f, 0.20f, -0.15f, PI, 0, 2 };   // crew standing, center
+    CrewMember c4 = { -0.90f, 0.22f, -0.55f, 0, 0, 1 };   // crew standing, aft port
+    CrewMember c5 = { 0.22f, -0.10f, -0.62f, PI, 0, 0 };   // pilot 2 (port seat)
     crew.push_back(c1);
     crew.push_back(c2);
     crew.push_back(c3);
     crew.push_back(c4);
+    crew.push_back(c5);
 
     // Clouds
     clouds.clear();
@@ -1628,13 +1640,6 @@ void drawLightRays() {
 // DRAW INTERIOR
 // ============================================================
 void drawInterior() {
-    if (cameraMode == CAM_CONTROL_SCREEN) {
-        glDisable(GL_FOG);
-        glDisable(GL_LIGHTING);
-        glColor3f(0.85f, 0.12f, 0.12f);
-        glPushMatrix(); glTranslatef(0,0,0); glutWireCube(3.0f); glPopMatrix();
-        glEnable(GL_LIGHTING);
-    }
     GLfloat matSpec[] = { 0.55f, 0.57f, 0.62f, 1.0f };
     GLfloat matShine[] = { 48.0f };
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
@@ -1642,6 +1647,9 @@ void drawInterior() {
     glEnable(GL_COLOR_MATERIAL);
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
+    // Floor / ceiling / back wall are drawn by drawCrewCabin in crew-room mode
+    // so the two halves merge into one continuous hull with no z-fighting.
+    if (cameraMode != CAM_CONTROL_SCREEN) {
     // Floor - dark brushed steel with subtle seams
     glPushMatrix();
     glColor3f(0.23f, 0.25f, 0.28f);
@@ -1728,6 +1736,7 @@ void drawInterior() {
             glPushMatrix(); glTranslatef(-1.51f, ry, rz); glColor3f(0.14f, 0.15f, 0.17f); drawSphere(0.013f, 4, 3); glPopMatrix();
             glPushMatrix(); glTranslatef(-1.51f, ry, 0); glColor3f(0.14f, 0.15f, 0.17f); drawSphere(0.011f, 4, 3); glPopMatrix();
         }
+    }
     }
 
     auto drawRivetRow = [](float x, float y0, float y1, float z, int n) {
@@ -1816,7 +1825,7 @@ void drawInterior() {
     glEnable(GL_LIGHTING);
 
     // Draw crew - muted, less cartoon (desaturated uniforms)
-    for (size_t i = 0; i < crew.size() && i < 2; i++) {
+    for (size_t i = 0; i < crew.size(); i++) {
         CrewMember& c = crew[i];
         glPushMatrix();
         glTranslatef(c.x, c.y, c.z);
@@ -1844,11 +1853,13 @@ void drawInterior() {
         glTranslatef(0,0.32f,0); glColor3f(0.08f,0.08f,0.09f); glScalef(1.0f,0.5f,1.0f); drawCube(1.0f);
         glPopMatrix();
     }
+    if (cameraMode != CAM_CONTROL_SCREEN) {
     for(size_t i=0;i<crew.size() && i<3;i++){
         glPushMatrix(); glTranslatef(crew[i].x-0.16f, crew[i].y-0.22f, crew[i].z);
         glColor3f(0.26f,0.27f,0.29f); glScalef(0.18f,0.04f,0.16f); drawCube(1.0f);
         glColor3f(0.20f,0.21f,0.23f); glTranslatef( -0.08f, -0.14f, 0); glScalef(1.0f,1.8f,0.08f); drawCube(1.0f);
         glPopMatrix();
+    }
     }
     glPushMatrix(); glTranslatef(-0.15f, -0.08f, 0.52f); glColor3f(0.32f,0.31f,0.29f); glScalef(0.85f,0.02f,0.42f); drawCube(1.0f); glPopMatrix();
     glDisable(GL_LIGHTING);
@@ -1896,6 +1907,822 @@ void drawInterior() {
     drawWindow(0.35f, 0.63f, -1.28f, 1.22f, 0.18f, 90);
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
+    glDisable(GL_COLOR_MATERIAL);
+}
+
+// ============================================================
+// DRAW CREW CABIN (distinct quarters behind the bridge)
+// ============================================================
+void drawCrewCabin() {
+    GLfloat matSpec[] = { 0.50f, 0.52f, 0.56f, 1.0f };
+    GLfloat matShine[] = { 32.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShine);
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+
+    // Room bounds in local (pre-scale) units. The scene is later scaled by
+    // INT_SX/INT_SY/INT_SZ inside display(), so 1 local metER ~ 1.7/1.3/1.5 world.
+    const float CR_AY = 1.45f;   // vertical hull semi-axis
+    const float CR_BZ = 1.44f;   // horizontal hull semi-axis
+    const float CR_CY = 0.22f;   // hull vertical centre
+    const float CR_AX = 1.75f;   // hull longitudinal half extents
+    const float CR_FY = -0.52f;  // deck top
+    const float CR_XF = 1.55f;   // forward bulkhead
+    const float CR_XA = -1.55f;  // aft bulkhead
+    const int   CR_SEG = 30;     // angular tessellation of the tube
+
+    auto hullYZ = [&](float t, float &y, float &z) {
+        y = CR_CY + CR_AY * sin(t);
+        z = CR_BZ * cos(t);
+    };
+    auto hullNormal = [&](float y, float z, float &ny, float &nz) {
+        float ey = (y - CR_CY) / (CR_AY * CR_AY);
+        float ez = z / (CR_BZ * CR_BZ);
+        float L = sqrt(ey * ey + ez * ez) + 1e-6f;
+        ny = -ey / L;   // inward
+        nz = -ez / L;
+    };
+
+    // ------------------------------------------------------------------
+    // 1. CURVED HULL SKIN - continuous elliptical metal tube with round
+    //    porthole openings cut out. Visible from inside; closes off the
+    //    ocean everywhere except through the porthole glass.
+    // ------------------------------------------------------------------
+    const float xStride = (2.0f * CR_AX) / 25.0f;
+    const float tStep = (2.0f * (float)PI) / CR_SEG;
+    const float portholeX[3] = { -0.75f, 0.0f, 0.75f };
+    const float portholeY = 0.50f;
+    const float holeR = 0.135f;
+
+    glBegin(GL_QUADS);
+    for (int ix = 0; ix < 25; ix++) {
+        float x0 = -CR_AX + ix * xStride;
+        float x1 = x0 + xStride;
+        for (int it = 0; it < CR_SEG; it++) {
+            float t0 = it * tStep;
+            float t1 = t0 + tStep;
+            float yA, zA, yB, zB, yC, zC, yD, zD;
+            hullYZ(t0, yA, zA);     // (x0, t0)
+            hullYZ(t1, yB, zB);     // (x0, t1)
+            hullYZ(t1, yC, zC);     // (x1, t1)
+            hullYZ(t0, yD, zD);     // (x1, t0)
+            float yMid, zMid;
+            hullYZ(0.5f * (t0 + t1), yMid, zMid);
+
+            // cut out round portholes in the side walls (|t| near 0 or PI)
+            bool skip = false;
+            float xMid = 0.5f * (x0 + x1);
+            if (fabs(zMid) > 0.5f) {
+                for (int p = 0; p < 3 && !skip; p++) {
+                    float dx = xMid - portholeX[p];
+                    float dy = yMid - portholeY;
+                    if (dx * dx + dy * dy < holeR * holeR) skip = true;
+                }
+            }
+            if (skip) continue;
+
+            float midRatio = (yMid - CR_CY) / CR_AY;
+            float lum = 0.86f + 0.35f * midRatio;
+            int hash = (int)(hashNoise(ix * 3 + it, ix + it * 5, 7) & 3);
+            lum += ((float)hash - 1.5f) * 0.03f;
+            if (lum < 0.5f) lum = 0.5f;
+            if (lum > 1.25f) lum = 1.25f;
+            float cR = 0.32f * lum, cG = 0.34f * lum, cB = 0.37f * lum;
+            glColor3f(cR, cG, cB);
+
+            float nAy, nAz, nBy, nBz, nCy, nCz, nDy, nDz;
+            hullNormal(yA, zA, nAy, nAz);
+            hullNormal(yB, zB, nBy, nBz);
+            hullNormal(yC, zC, nCy, nCz);
+            hullNormal(yD, zD, nDy, nDz);
+            glNormal3f(0.0f, nAy, nAz); glVertex3f(x0, yA, zA);
+            glNormal3f(0.0f, nBy, nBz); glVertex3f(x0, yB, zB);
+            glNormal3f(0.0f, nCy, nCz); glVertex3f(x1, yC, zC);
+            glNormal3f(0.0f, nDy, nDz); glVertex3f(x1, yD, zD);
+        }
+    }
+    glEnd();
+
+    // Rib seams (circumferential) + weld meridians - crisp dark lines
+    glDisable(GL_LIGHTING);
+    glLineWidth(1.6f);
+    glColor3f(0.10f, 0.11f, 0.13f);
+    for (int ix = 1; ix < 24; ix += 3) {
+        float x = -CR_AX + ix * xStride;
+        if (ix % 3 != 1) continue;
+        glBegin(GL_LINE_LOOP);
+        for (int it = 0; it < CR_SEG; it++) {
+            float t = (float)it * tStep;
+            float y, z, ny, nz;
+            hullYZ(t, y, z);
+            hullNormal(y, z, ny, nz);
+            glVertex3f(x, y - ny * 0.005f, z - nz * 0.005f);
+        }
+        glEnd();
+    }
+    for (int m = 0; m < 4; m++) {
+        float t = (m == 0) ? (0.5f * PI) : (m == 1) ? (-0.5f * PI) : (m == 2) ? 0.0f : PI;
+        glBegin(GL_LINE_STRIP);
+        for (int ix = 0; ix < 26; ix++) {
+            float x = -CR_AX + ix * xStride;
+            float y, z, ny, nz;
+            hullYZ(t, y, z);
+            hullNormal(y, z, ny, nz);
+            glVertex3f(x, y - ny * 0.005f, z - nz * 0.005f);
+        }
+        glEnd();
+    }
+    glEnable(GL_LIGHTING);
+
+    // Closed end caps so the tube is sealed in every direction
+    auto capFan = [&](float capX, float dirX) {
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glColor3f(0.14f, 0.15f, 0.16f);
+        glNormal3f(dirX, 0.0f, 0.0f);
+        glBegin(GL_TRIANGLE_FAN);
+        glVertex3f(capX, CR_CY, 0.0f);
+        for (int it = 0; it <= CR_SEG; it++) {
+            float t = (float)it * tStep;
+            float y, z;
+            hullYZ(t, y, z);
+            glVertex3f(capX, y, z);
+        }
+        glEnd();
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+    };
+    capFan(-CR_AX,  1.0f);
+    capFan( CR_AX, -1.0f);
+
+    // ------------------------------------------------------------------
+    // 2. DECK - solid metal platform, walking plates, centre aisle stripe
+    // ------------------------------------------------------------------
+    glPushMatrix();
+    glTranslatef(0.0f, CR_FY - 0.10f, 0.0f);
+    glColor3f(0.12f, 0.13f, 0.13f);
+    glScalef(3.50f, 0.20f, 2.46f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(0.0f, CR_FY, 0.0f);
+    glColor3f(0.22f, 0.24f, 0.23f);
+    glScalef(3.30f, 0.03f, 2.42f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(0.0f, CR_FY + 0.012f, 0.0f);
+    glColor3f(0.30f, 0.32f, 0.30f);
+    glScalef(3.00f, 0.012f, 0.64f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(0.0f, CR_FY + 0.016f, 0.0f);
+    glColor3f(0.45f, 0.43f, 0.20f);
+    glScalef(2.75f, 0.006f, 0.09f);
+    drawCube(1.0f);
+    glPopMatrix();
+    for (int j = 0; j < 14; j++) {
+        glPushMatrix();
+        glTranslatef(-1.30f + j * 0.20f, CR_FY + 0.017f, 0.0f);
+        glColor3f(0.12f, 0.13f, 0.12f);
+        glScalef(0.015f, 0.008f, 0.62f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+    for (int s = -1; s <= 1; s += 2) {
+        for (int zz = 0; zz < 2; zz++) {
+            glPushMatrix();
+            glTranslatef(0.0f, CR_FY + 0.017f, s * (0.42f + zz * 0.43f));
+            glColor3f(0.13f, 0.14f, 0.13f);
+            glScalef(3.10f, 0.008f, 0.014f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+        glPushMatrix();
+        glTranslatef(0.0f, CR_FY + 0.014f, s * 1.14f);
+        glColor3f(0.10f, 0.11f, 0.11f);
+        glScalef(3.10f, 0.02f, 0.06f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+
+    // ------------------------------------------------------------------
+    // 3. PORTHOLES - six small circular metal-rimmed ocean windows
+    // ------------------------------------------------------------------
+    auto porthole = [&](float px, float py, float pz, float side) {
+        glPushMatrix();
+        glTranslatef(px, py, pz);
+        if (side < 0.0f) glRotatef(180.0f, 0, 1, 0);
+        // outer rim ring + glass seat
+        glColor3f(0.26f, 0.28f, 0.31f);
+        drawTorus(0.070f, 0.118f, 10, 20);
+        glColor3f(0.30f, 0.33f, 0.36f);
+        drawDisk(0.02f, 0.075f, 20);
+        // translucent ocean glass
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_LIGHTING);
+        glColor4f(0.30f, 0.66f, 0.86f, 0.45f);
+        glPushMatrix();
+        glTranslatef(0.0f, 0.0f, 0.010f);
+        drawDisk(0.0f, 0.075f, 20);
+        glPopMatrix();
+        glColor4f(0.85f, 0.95f, 1.0f, 0.22f);
+        glPushMatrix();
+        glTranslatef(0.0f, 0.0f, 0.016f);
+        drawDisk(0.0f, 0.035f, 16);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+        glDisable(GL_BLEND);
+        // clamping bolts
+        for (int b = 0; b < 8; b++) {
+            float a = (float)b * 0.25f * PI + 0.125f * PI;
+            glPushMatrix();
+            glTranslatef(0.090f * cos(a), 0.090f * sin(a), 0.0f);
+            glColor3f(0.13f, 0.14f, 0.15f);
+            drawSphere(0.009f, 4, 3);
+            glPopMatrix();
+        }
+        glPopMatrix();
+    };
+    porthole(-0.75f, 0.50f,  1.40f,  1.0f);
+    porthole( 0.00f, 0.50f,  1.40f,  1.0f);
+    porthole( 0.75f, 0.50f,  1.40f,  1.0f);
+    porthole(-0.75f, 0.50f, -1.40f, -1.0f);
+    porthole( 0.00f, 0.50f, -1.40f, -1.0f);
+    porthole( 0.75f, 0.50f, -1.40f, -1.0f);
+
+    // ------------------------------------------------------------------
+    // 4. OVERHEAD - light housing, ducts, pipes, cable trays, valves
+    // ------------------------------------------------------------------
+    glPushMatrix();
+    glTranslatef(0.0f, 0.80f, 0.0f);
+    glColor3f(0.24f, 0.25f, 0.27f);
+    glScalef(2.70f, 0.06f, 0.20f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glPushMatrix();
+    glTranslatef(0.0f, 0.775f, 0.0f);
+    glColor4f(1.0f, 0.98f, 0.90f, 0.95f);
+    glScalef(2.40f, 0.008f, 0.13f);
+    drawCube(1.0f);
+    glPopMatrix();
+    for (int h = 0; h < 5; h++) {
+        glPushMatrix();
+        glColor4f(1.0f, 0.90f, 0.75f, 0.10f);
+        glTranslatef(-1.20f + h * 0.60f, 0.79f, 0.0f);
+        drawSphere(0.22f, 8, 6);
+        glPopMatrix();
+    }
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
+
+    for (int s = -1; s <= 1; s += 2) {
+        // ventilation ducts
+        glPushMatrix();
+        glTranslatef(0.0f, 0.62f, s * 0.55f);
+        glColor3f(0.34f, 0.36f, 0.39f);
+        glScalef(2.30f, 0.06f, 0.14f);
+        drawCube(1.0f);
+        glPopMatrix();
+        for (int g = 0; g < 9; g++) {
+            glPushMatrix();
+            glTranslatef(-1.05f + g * 0.26f, 0.585f, s * 0.55f);
+            glColor3f(0.12f, 0.13f, 0.14f);
+            glScalef(0.18f, 0.012f, 0.03f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+        // pipe runs along the curved hull
+        glPushMatrix();
+        glTranslatef(0.0f, 0.74f, s * 0.82f);
+        glColor3f(0.30f, 0.32f, 0.35f);
+        glScalef(2.90f, 0.045f, 0.045f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(0.0f, 0.66f, s * 0.90f);
+        glColor3f(0.20f, 0.21f, 0.23f);
+        glScalef(2.90f, 0.028f, 0.028f);
+        drawCube(1.0f);
+        glPopMatrix();
+        // cable tray on the opposite side
+        glPushMatrix();
+        glTranslatef(0.0f, 0.74f, -s * 0.66f);
+        glColor3f(0.16f, 0.17f, 0.19f);
+        glScalef(2.70f, 0.03f, 0.06f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+
+    auto valve = [&](float vx, float vy, float vz) {
+        glPushMatrix();
+        glTranslatef(vx, vy, vz);
+        glColor3f(0.34f, 0.36f, 0.39f);
+        glPushMatrix();
+        glRotatef(90, 0, 1, 0);
+        drawCylinder(0.05f, 0.16f, 10);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(0.0f, 0.10f, 0.0f);
+        glRotatef(-90, 1, 0, 0);
+        glColor3f(0.20f, 0.12f, 0.08f);
+        drawTorus(0.05f, 0.090f, 8, 14);
+        for (int spv = 0; spv < 3; spv++) {
+            glPushMatrix();
+            glColor3f(0.25f, 0.16f, 0.10f);
+            glRotatef((float)spv * 120.0f, 0, 1, 0);
+            glTranslatef(0.050f, 0.0f, 0.0f);
+            glScalef(0.10f, 0.016f, 0.016f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+        glPopMatrix();
+        glPopMatrix();
+    };
+    valve(-0.42f, 0.74f, -0.82f);
+    valve( 0.30f, 0.74f,  0.82f);
+
+    // ------------------------------------------------------------------
+    // 5. FORWARD BULKHEAD + BIG CONTROL SCREEN + SIDE DISPLAYS
+    // ------------------------------------------------------------------
+    glPushMatrix();
+    glTranslatef(CR_XF, 0.18f, 0.0f);
+    glColor3f(0.36f, 0.40f, 0.44f);
+    glScalef(0.08f, 1.42f, 2.46f);
+    drawCube(1.0f);
+    glPopMatrix();
+    for (int sy = 0; sy < 3; sy++) {
+        glPushMatrix();
+        glTranslatef(CR_XF - 0.045f, -0.15f + sy * 0.42f, 0.0f);
+        glColor3f(0.18f, 0.20f, 0.22f);
+        glScalef(0.012f, 0.01f, 2.20f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+    for (int rv = 0; rv < 4; rv++) {
+        for (int rz = -1; rz <= 1; rz += 2) {
+            glPushMatrix();
+            glTranslatef(CR_XF - 0.035f, -0.28f + rv * 0.26f, rz * 1.10f);
+            glColor3f(0.12f, 0.13f, 0.15f);
+            drawSphere(0.011f, 4, 3);
+            glPopMatrix();
+        }
+    }
+    // side status displays flanking the main screen
+    for (int s = -1; s <= 1; s += 2) {
+        glPushMatrix();
+        glColor3f(0.10f, 0.11f, 0.13f);
+        glTranslatef(CR_XF - 0.06f, 0.34f, s * 1.04f);
+        glScalef(0.02f, 0.42f, 0.30f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glColor3f(0.14f, 0.50f, 0.36f);
+        glTranslatef(CR_XF - 0.05f, 0.34f, s * 1.04f);
+        glScalef(0.01f, 0.38f, 0.26f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+    }
+    // main sonar / navigation screen frame
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.13f, 0.18f + 0.36f, 0.0f);
+    glColor3f(0.10f, 0.12f, 0.14f);
+    glScalef(0.06f, 0.88f, 1.94f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glDisable(GL_LIGHTING);
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.11f, 0.54f, 0.0f);
+    glColor3f(0.04f, 0.20f, 0.44f);
+    glScalef(0.015f, 0.80f, 1.84f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.12f, 0.54f, 0.0f);
+    glColor3f(0.10f, 0.45f, 0.72f);
+    glScalef(0.012f, 0.66f, 1.60f);
+    drawCube(1.0f);
+    glPopMatrix();
+    for (int sl = 0; sl < 7; sl++) {
+        glPushMatrix();
+        glTranslatef(CR_XF - 0.125f, 0.14f + sl * 0.105f, 0.0f);
+        glColor3f(0.05f, 0.30f, 0.55f);
+        glScalef(0.012f, 0.012f, 1.78f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.13f, 0.54f, -0.55f);
+    glRotatef(90, 0, 1, 0);
+    glColor3f(0.30f, 0.85f, 1.0f);
+    drawDisk(0.05f, 0.34f, 28);
+    glPopMatrix();
+    for (int bl = 0; bl < 5; bl++) {
+        float a = (float)bl * 1.256637f;
+        glPushMatrix();
+        glTranslatef(CR_XF - 0.13f, 0.54f + sin(a) * 0.30f, -0.55f + cos(a) * 0.30f);
+        glColor3f(0.9f, 0.9f, 0.2f);
+        drawSphere(0.020f, 6, 5);
+        glPopMatrix();
+    }
+    for (int bar = 0; bar < 4; bar++) {
+        glPushMatrix();
+        glTranslatef(CR_XF - 0.13f, 0.20f + bar * 0.17f, 0.72f);
+        glColor3f(0.2f, 0.8f, 0.4f);
+        glScalef(0.012f, 0.11f, 0.14f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.13f, 0.885f, -0.40f);
+    glColor3f(0.8f, 0.85f, 0.9f);
+    glScalef(0.012f, 0.02f, 0.80f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glEnable(GL_LIGHTING);
+    // soft glow bleeding in front of the screen
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glDisable(GL_LIGHTING);
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.30f, 0.54f, 0.0f);
+    glColor4f(0.08f, 0.35f, 0.62f, 0.12f);
+    glScalef(0.30f, 0.90f, 2.00f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glEnable(GL_LIGHTING);
+    glDisable(GL_BLEND);
+    // red / green running lamps near the top corners
+    for (int s = -1; s <= 1; s += 2) {
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glColor3f(0.9f, 0.2f, 0.2f);
+        glTranslatef(1.45f, 0.95f, s * 1.10f);
+        drawSphere(0.018f, 6, 5);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glColor3f(0.2f, 0.9f, 0.3f);
+        glTranslatef(1.42f, 0.95f, s * 1.10f);
+        drawSphere(0.018f, 6, 5);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+    }
+
+    // ------------------------------------------------------------------
+    // 6. CONSOLE BANK in front of the big screen + front operators
+    // ------------------------------------------------------------------
+    auto frontConsole = [&](float compz, float compw) {
+        glPushMatrix();
+        glTranslatef(1.22f, -0.40f, compz);
+        glColor3f(0.13f, 0.15f, 0.18f);
+        glScalef(0.34f, 0.27f, compw);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(1.24f, -0.13f, compz);
+        glColor3f(0.22f, 0.26f, 0.30f);
+        glScalef(0.46f, 0.035f, compw);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(1.42f, -0.05f, compz);
+        glRotatef(-12, 0, 0, 1);
+        glColor3f(0.10f, 0.11f, 0.13f);
+        glScalef(0.035f, 0.26f, compw * 0.80f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glTranslatef(1.435f, -0.045f, compz);
+        glRotatef(-12, 0, 0, 1);
+        glColor3f(0.12f, 0.40f, 0.62f);
+        glScalef(0.012f, 0.24f, compw * 0.72f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+        for (int k = 0; k < 3; k++) {
+            glDisable(GL_LIGHTING);
+            glPushMatrix();
+            if (k == 0) glColor3f(0.8f, 0.2f, 0.2f);
+            else if (k == 1) glColor3f(0.9f, 0.8f, 0.2f);
+            else glColor3f(0.2f, 0.9f, 0.3f);
+            glTranslatef(1.20f - k * 0.14f, -0.10f, compz);
+            drawSphere(0.012f, 6, 5);
+            glPopMatrix();
+            glEnable(GL_LIGHTING);
+        }
+    };
+    frontConsole(-0.52f, 0.34f);
+    frontConsole( 0.00f, 0.34f);
+    frontConsole( 0.52f, 0.34f);
+
+    auto chair = [&](float cx, float cz, float yaw) {
+        glPushMatrix();
+        glTranslatef(cx, -0.52f, cz);
+        glRotatef(yaw, 0, 1, 0);
+        for (int k = 0; k < 5; k++) {
+            float a = (float)k * 1.256637f;
+            glPushMatrix();
+            glColor3f(0.10f, 0.11f, 0.12f);
+            glTranslatef(cos(a) * 0.16f, 0.015f, sin(a) * 0.16f);
+            drawSphere(0.025f, 6, 5);
+            glPopMatrix();
+            glPushMatrix();
+            glColor3f(0.13f, 0.14f, 0.15f);
+            glTranslatef(cos(a) * 0.08f, 0.03f, sin(a) * 0.08f);
+            glRotatef(k * 72.0f, 0, 1, 0);
+            glScalef(0.05f, 0.02f, 0.16f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+        glPushMatrix();
+        glColor3f(0.12f, 0.13f, 0.15f);
+        glTranslatef(0.0f, 0.10f, 0.0f);
+        glRotatef(-90, 1, 0, 0);
+        drawCylinder(0.025f, 0.10f, 8);
+        glPopMatrix();
+        glPushMatrix();
+        glColor3f(0.16f, 0.20f, 0.24f);
+        glTranslatef(0.0f, 0.14f, 0.0f);
+        glScalef(0.28f, 0.04f, 0.26f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glColor3f(0.16f, 0.20f, 0.24f);
+        glTranslatef(0.0f, 0.26f, -0.10f);
+        glScalef(0.26f, 0.24f, 0.035f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPopMatrix();
+    };
+
+    // crew figure: recognizable human (head, torso, 2 arms, 2 legs, uniform)
+    auto crew = [&](float fx, float fy, float fz, float yaw, bool seated, int v) {
+        float coatR, coatG, coatB, pantR, pantG, pantB;
+        float skinR, skinG, skinB, hairR, hairG, hairB;
+        if (v == 0) {  // enlisted: teal shirt, dark pants, light skin, brown hair
+            coatR = 0.16f; coatG = 0.30f; coatB = 0.34f;
+            pantR = 0.11f; pantG = 0.12f; pantB = 0.14f;
+            skinR = 0.82f; skinG = 0.72f; skinB = 0.62f;
+            hairR = 0.18f; hairG = 0.14f; hairB = 0.10f;
+        } else {      // officer: navy jacket, tan skin, black hair
+            coatR = 0.10f; coatG = 0.14f; coatB = 0.24f;
+            pantR = 0.06f; pantG = 0.08f; pantB = 0.12f;
+            skinR = 0.72f; skinG = 0.58f; skinB = 0.45f;
+            hairR = 0.05f; hairG = 0.05f; hairB = 0.06f;
+        }
+        float hip = seated ? 0.02f : 0.10f;
+        float shY = seated ? 0.33f : 0.46f;
+        glPushMatrix();
+        glTranslatef(fx, fy, fz);
+        glRotatef(yaw, 0, 1, 0);
+        // legs
+        for (int s = -1; s <= 1; s += 2) {
+            glPushMatrix();
+            glColor3f(pantR, pantG, pantB);
+            if (seated) {
+                glPushMatrix();
+                glTranslatef(s * 0.065f, hip - 0.015f, 0.16f);
+                glScalef(0.085f, 0.075f, 0.34f);
+                drawCube(1.0f);
+                glPopMatrix();
+                glPushMatrix();
+                glTranslatef(s * 0.065f, hip - 0.24f, 0.30f);
+                glScalef(0.075f, 0.50f, 0.075f);
+                drawCube(1.0f);
+                glPopMatrix();
+            } else {
+                glPushMatrix();
+                glTranslatef(s * 0.065f, -0.20f, 0.0f);
+                glScalef(0.075f, 0.60f, 0.085f);
+                drawCube(1.0f);
+                glPopMatrix();
+            }
+            glPushMatrix();
+            glColor3f(0.08f, 0.08f, 0.09f);
+            glTranslatef(s * 0.065f, -0.515f, seated ? 0.30f : 0.02f);
+            glScalef(0.085f, 0.055f, 0.12f);
+            drawCube(1.0f);
+            glPopMatrix();
+            glPopMatrix();
+        }
+        // torso + belt
+        glPushMatrix();
+        glColor3f(coatR, coatG, coatB);
+        glTranslatef(0.0f, seated ? 0.17f : 0.27f, 0.0f);
+        glScalef(0.28f, seated ? 0.32f : 0.38f, 0.18f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glColor3f(0.06f, 0.07f, 0.08f);
+        glTranslatef(0.0f, hip, 0.0f);
+        glScalef(0.275f, 0.03f, 0.17f);
+        drawCube(1.0f);
+        glPopMatrix();
+        // arms + hands
+        for (int s = -1; s <= 1; s += 2) {
+            glPushMatrix();
+            glColor3f(coatR, coatG, coatB);
+            glTranslatef(s * 0.165f, shY - 0.16f, 0.015f);
+            glScalef(0.062f, 0.32f, 0.062f);
+            drawCube(1.0f);
+            glPopMatrix();
+            glPushMatrix();
+            glColor3f(skinR, skinG, skinB);
+            glTranslatef(s * 0.165f, shY - 0.33f, 0.035f);
+            drawSphere(0.032f, 8, 6);
+            glPopMatrix();
+        }
+        // neck, head, hair, collar, face hint
+        glPushMatrix();
+        glColor3f(skinR, skinG, skinB);
+        glTranslatef(0.0f, shY + 0.03f, 0.0f);
+        glScalef(0.05f, 0.05f, 0.05f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glColor3f(skinR, skinG, skinB);
+        glTranslatef(0.0f, shY + 0.10f, 0.0f);
+        drawSphere(0.105f, 12, 10);
+        glPopMatrix();
+        glPushMatrix();
+        glColor3f(hairR, hairG, hairB);
+        glTranslatef(0.0f, shY + 0.125f, -0.015f);
+        glScalef(0.105f, 0.055f, 0.105f);
+        drawSphere(1.0f, 10, 6);
+        glPopMatrix();
+        glPushMatrix();
+        glColor3f(0.92f, 0.92f, 0.94f);
+        glTranslatef(0.0f, shY + 0.04f, 0.085f);
+        glScalef(0.11f, 0.025f, 0.03f);
+        drawCube(1.0f);
+        glPopMatrix();
+        if (v == 1) {
+            glPushMatrix();
+            glColor3f(0.03f, 0.04f, 0.06f);
+            glTranslatef(0.0f, shY + 0.135f, 0.085f);
+            glScalef(0.14f, 0.015f, 0.07f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+        glPopMatrix();
+    };
+
+    chair(0.97f, -0.52f, 90.0f);
+    crew(0.96f, -0.52f, -0.52f, 90.0f, true, 0);
+    chair(0.97f,  0.52f, 90.0f);
+    crew(0.96f, -0.52f,  0.52f, 90.0f, true, 0);
+
+    // ------------------------------------------------------------------
+    // 7. SIDE CONSOLES + seated side operators
+    // ------------------------------------------------------------------
+    auto sideConsole = [&](float cx, float cz, float dir) {
+        for (int k = 0; k < 2; k++) {
+            glPushMatrix();
+            glTranslatef(cx - 0.30f + k * 0.60f, -0.36f, cz + dir * 0.02f);
+            glColor3f(0.14f, 0.16f, 0.19f);
+            glScalef(0.12f, 0.36f, 0.30f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+        glPushMatrix();
+        glTranslatef(cx, -0.14f, cz + dir * 0.06f);
+        glColor3f(0.24f, 0.28f, 0.32f);
+        glScalef(0.72f, 0.03f, 0.32f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(cx, 0.06f, cz + dir * 0.24f);
+        glColor3f(0.09f, 0.10f, 0.12f);
+        glScalef(0.60f, 0.28f, 0.04f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glTranslatef(cx, 0.07f, cz + dir * 0.245f);
+        glColor3f(0.10f, 0.45f, 0.60f);
+        glScalef(0.56f, 0.25f, 0.015f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+        glPushMatrix();
+        glTranslatef(cx, -0.30f, cz + dir * 0.12f);
+        glColor3f(0.08f, 0.09f, 0.10f);
+        glScalef(0.56f, 0.02f, 0.10f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glColor3f(0.75f, 0.70f, 0.45f);
+        glTranslatef(cx - 0.28f, -0.10f, cz + dir * 0.02f);
+        glRotatef(-90, 1, 0, 0);
+        drawCylinder(0.028f, 0.06f, 8);
+        glPopMatrix();
+    };
+    sideConsole(-0.05f, -1.02f, -1.0f);
+    sideConsole(-0.05f,  1.02f,  1.0f);
+    chair(-0.05f, -0.76f, 180.0f);
+    crew(-0.05f, -0.52f, -0.76f, 180.0f, true, 0);
+    chair(-0.05f,  0.76f, 0.0f);
+    crew(-0.05f, -0.52f,  0.76f, 0.0f, true, 0);
+
+    // ------------------------------------------------------------------
+    // 8. AFT BULKHEAD - round hatch, cabinets, nav display, standing officer
+    // ------------------------------------------------------------------
+    glPushMatrix();
+    glTranslatef(CR_XA, 0.18f, 0.0f);
+    glColor3f(0.34f, 0.37f, 0.41f);
+    glScalef(0.08f, 1.42f, 2.46f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    for (int s = -1; s <= 1; s += 2) {
+        glPushMatrix();
+        glTranslatef(CR_XA + 0.12f, 0.18f, s * 0.74f);
+        glColor3f(0.14f, 0.18f, 0.24f);
+        glScalef(0.22f, 1.15f, 0.30f);
+        drawCube(1.0f);
+        glPopMatrix();
+        for (int d2 = 0; d2 < 2; d2++) {
+            glPushMatrix();
+            glTranslatef(CR_XA + 0.14f, 0.20f, s * 0.74f + (d2 ? 0.09f : -0.09f));
+            glColor3f(0.10f, 0.12f, 0.16f);
+            glScalef(0.03f, 0.90f, 0.01f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+    }
+
+    glDisable(GL_LIGHTING);
+    glPushMatrix();
+    glTranslatef(CR_XA + 0.02f, 0.60f, -0.55f);
+    glColor3f(0.15f, 0.55f, 0.30f);
+    glScalef(0.015f, 0.16f, 0.24f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glEnable(GL_LIGHTING);
+
+    glPushMatrix();
+    glTranslatef(-1.44f, -0.46f, 0.98f);
+    glColor3f(0.65f, 0.12f, 0.13f);
+    glScalef(0.07f, 0.14f, 0.07f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-1.42f, -0.47f, -1.00f);
+    glColor3f(0.35f, 0.30f, 0.20f);
+    glScalef(0.16f, 0.10f, 0.14f);
+    drawCube(1.0f);
+    glPopMatrix();
+
+    // round dogged hatch
+    glPushMatrix();
+    glTranslatef(CR_XA + 0.02f, 0.12f, 0.0f);
+    glRotatef(90, 0, 1, 0);
+    glColor3f(0.22f, 0.24f, 0.27f);
+    drawCylinder(0.34f, 0.05f, 26);
+    glColor3f(0.34f, 0.36f, 0.39f);
+    drawDisk(0.0f, 0.34f, 26);
+    glColor3f(0.16f, 0.17f, 0.19f);
+    drawDisk(0.12f, 0.30f, 24);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(CR_XA + 0.07f, 0.12f, 0.0f);
+    for (int h = 0; h < 6; h++) {
+        glPushMatrix();
+        glRotatef((float)h * 60.0f, 1, 0, 0);
+        glTranslatef(0.0f, 0.16f, 0.0f);
+        glColor3f(0.22f, 0.24f, 0.26f);
+        glScalef(0.04f, 0.30f, 0.03f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+    glColor3f(0.30f, 0.32f, 0.35f);
+    drawSphere(0.045f, 8, 6);
+    glPopMatrix();
+    for (int dg = 0; dg < 6; dg++) {
+        float a = (float)dg * 1.0471975f;
+        glPushMatrix();
+        glTranslatef(CR_XA - 0.005f, 0.12f + sin(a) * 0.30f, cos(a) * 0.30f);
+        glRotatef((float)dg * 60.0f, 1, 0, 0);
+        glColor3f(0.12f, 0.13f, 0.15f);
+        glScalef(0.03f, 0.09f, 0.03f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+
+    // standing officer near the hatch
+    crew(-1.25f, -0.52f, -0.45f, 90.0f, false, 1);
+
     glDisable(GL_COLOR_MATERIAL);
 }
 
@@ -2001,12 +2828,19 @@ void drawHUD() {
     glVertex2f(windowWidth - 314, 74);
     glEnd();
 
-    glColor3f(0.7f, 0.7f, 0.7f);
-    drawText(windowWidth - 304, 149, "W/S: Fwd/Bwd  A/D: Turn", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 304, 134, "R/F: Up/Down  Q/E: Roll", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 304, 119, "L: Lights  C: Camera", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 304, 104, "Space: Stop  ESC: Exit", GLUT_BITMAP_HELVETICA_12);
-    drawText(windowWidth - 304, 89, "Mouse: Orbit (Ext view)", GLUT_BITMAP_HELVETICA_12);
+glColor3f(0.7f, 0.7f, 0.7f);
+    if (cameraMode == CAM_CONTROL_SCREEN) {
+        drawText(windowWidth - 304, 149, "W/A/S/D: Walk", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 134, "Mouse drag: Look around", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 119, "C: Camera  V: External", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 104, "ESC: Menu", GLUT_BITMAP_HELVETICA_12);
+    } else {
+        drawText(windowWidth - 304, 149, "W/S: Fwd/Bwd  A/D: Turn", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 134, "R/F: Up/Down  Q/E: Roll", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 119, "L: Lights  C: Camera", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 104, "Space: Stop  ESC: Menu/Exit", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 89,  "Mouse: Orbit (Ext view)", GLUT_BITMAP_HELVETICA_12);
+    }
 
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
@@ -2257,10 +3091,10 @@ void setupCamera() {
     case CAM_CONTROL_SCREEN: {
         float subYawRad = sub.yaw * DEG_TO_RAD;
         float cosY = cos(subYawRad), sinY = sin(subYawRad);
-        float lx = cam.freeX, lz = cam.freeZ;
+        float lx = cam.freeX * INT_SX, lz = cam.freeZ * INT_SZ;
         float wx = sub.x + lx * cosY + lz * sinY;
         float wz = sub.z - lx * sinY + lz * cosY;
-        float wy = sub.y + 0.52f + cam.freeY;
+        float wy = sub.y + INT_EYE * INT_SY + cam.freeY;
         float fyaw = cam.freeYaw * DEG_TO_RAD;
         float fpitch = cam.freePitch * DEG_TO_RAD;
         float fx = wx + cos(fyaw) * cos(fpitch) * 2.0f;
@@ -2440,6 +3274,36 @@ void updateIntro() {
             currentMission = MISSION_RETURN;
         }
     }
+}
+
+// ============================================================
+// FIRST-PERSON CREW MOVEMENT (crew room / control screen)
+// ============================================================
+void updateCrewWalk() {
+    if (gameState != STATE_PLAYING) return;
+    if (cameraMode != CAM_CONTROL_SCREEN) return;
+
+    float yawR = cam.freeYaw * DEG_TO_RAD;
+    float mx = 0.0f, mz = 0.0f;
+    if (walkKeys['w'] || walkKeys['W']) { mx += cos(yawR); mz += sin(yawR); }
+    if (walkKeys['s'] || walkKeys['S']) { mx -= cos(yawR); mz -= sin(yawR); }
+    if (walkKeys['a'] || walkKeys['A']) { mx += sin(yawR); mz -= cos(yawR); }
+    if (walkKeys['d'] || walkKeys['D']) { mx -= sin(yawR); mz += cos(yawR); }
+    if (mx == 0.0f && mz == 0.0f) return;
+
+    float len = sqrt(mx * mx + mz * mz);
+    float step = 0.06f; // per frame at ~60fps
+    cam.freeX += (mx / len) * step;
+    cam.freeZ += (mz / len) * step;
+
+    // Hull walls
+    if (cam.freeX < -1.5f) cam.freeX = -1.5f;
+    if (cam.freeX > 1.06f) cam.freeX = 1.06f;
+    if (cam.freeZ < -1.2f) cam.freeZ = -1.2f;
+    if (cam.freeZ > 1.2f) cam.freeZ = 1.2f;
+
+    // Stop just short of the forward dashboard console
+    if (cam.freeX > 1.04f) cam.freeX = 1.04f;
 }
 
 // ============================================================
@@ -2633,22 +3497,35 @@ void display() {
 
     if (gameState == STATE_PLAYING || gameState == STATE_DIVING ||
         gameState == STATE_INTRO) {
-        if (cameraMode == CAM_INTERIOR || cameraMode == CAM_FRONT_WINDOW ||
+        bool interiorCam = cameraMode == CAM_INTERIOR || cameraMode == CAM_FRONT_WINDOW ||
             cameraMode == CAM_LEFT_WINDOW || cameraMode == CAM_RIGHT_WINDOW ||
-            cameraMode == CAM_CONTROL_SCREEN) {
+            cameraMode == CAM_CONTROL_SCREEN;
+        if (interiorCam) {
+            // Draw the underwater world FIRST so it shows through the window glass
+            drawFish();
+            drawSharks();
+            drawRays();
+            drawBubbles();
             glDisable(GL_FOG);
-            drawInterior();
+            glPushMatrix();
+            glTranslatef(sub.x, sub.y, sub.z);
+            glRotatef(sub.yaw, 0, 1, 0);
+            if (cameraMode == CAM_CONTROL_SCREEN) {
+                glScalef(INT_SX, INT_SY, INT_SZ);
+                drawCrewCabin();
+            } else {
+                drawInterior();
+            }
+            glPopMatrix();
             glEnable(GL_FOG);
         } else {
             drawFullSubmarine();
+            drawFish();
+            drawSharks();
+            drawRays();
+            drawBubbles();
         }
     }
-
-    // Draw marine life
-    drawFish();
-    drawSharks();
-    drawRays();
-    drawBubbles();
 
     // Overlays
     if (gameState == STATE_INTRO || gameState == STATE_DIVING) {
@@ -2673,6 +3550,7 @@ void display() {
 // ============================================================
 void keyboardDown(unsigned char key, int x, int y) {
     (void)x; (void)y;
+    walkKeys[(size_t)key] = true;
 
     if (gameState == STATE_MENU) {
         if (key == 13) { // Enter
@@ -2742,18 +3620,21 @@ void keyboardDown(unsigned char key, int x, int y) {
     }
 
     if (cameraMode == CAM_CONTROL_SCREEN) {
-        float yawR = cam.freeYaw * DEG_TO_RAD;
-        float step = 0.12f;
-        switch (key) {
-        case 'w': case 'W': cam.freeX += cos(yawR)*step; cam.freeZ += sin(yawR)*step; break;
-        case 's': case 'S': cam.freeX -= cos(yawR)*step; cam.freeZ -= sin(yawR)*step; break;
-        case 'a': case 'A': cam.freeX -= sin(yawR)*step; cam.freeZ += cos(yawR)*step; break;
-        case 'd': case 'D': cam.freeX += sin(yawR)*step; cam.freeZ -= cos(yawR)*step; break;
-        default: break;
+        // First-person walk: W/A/S/D handled continuously in updateCrewWalk().
+        // Submarine controls are disabled here; only camera/UI keys work.
+        if (key == 'c' || key == 'C') {
+            cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
+            userCameraChoice = true;
+        } else if (key == 'v' || key == 'V') {
+            cameraMode = CAM_EXTERNAL;
+            userCameraChoice = true;
+            if (cam.orbitDistance > 16.0f || cam.orbitDistance < 10.0f) { cam.orbitDistance = 14.0f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
+        } else if (key == 27) {
+            gameState = STATE_MENU;
+            menuSelection = 0;
+            sub.targetSpeed = 0;
         }
-        if (cam.freeX > 1.1f) cam.freeX=1.1f; if (cam.freeX < -1.1f) cam.freeX=-1.1f;
-        if (cam.freeZ > 1.0f) cam.freeZ=1.0f; if (cam.freeZ < -1.0f) cam.freeZ=-1.0f;
-        if (key=='w'||key=='W'||key=='s'||key=='S'||key=='a'||key=='A'||key=='d'||key=='D') return;
+        return;
     }
     // Playing state controls
     switch (key) {
@@ -2791,6 +3672,10 @@ void keyboardDown(unsigned char key, int x, int y) {
     case 'c': case 'C':
         cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
         userCameraChoice = true;
+        if (cameraMode == CAM_CONTROL_SCREEN) {
+            cam.freeX = 0; cam.freeY = 0; cam.freeZ = 0;
+            cam.freeYaw = 0; cam.freePitch = 0;
+        }
         break;
     case 'v': case 'V':
         cameraMode = CAM_EXTERNAL;
@@ -2814,6 +3699,7 @@ void keyboardDown(unsigned char key, int x, int y) {
 
 void keyboardUp(unsigned char key, int x, int y) {
     (void)x; (void)y;
+    walkKeys[(size_t)key] = false;
 
     if (gameState != STATE_PLAYING) return;
 
@@ -2899,6 +3785,12 @@ void motion(int mx, int my) {
             cam.freePitch -= dy * 0.3f;
             if (cam.freePitch > 85) cam.freePitch = 85;
             if (cam.freePitch < -85) cam.freePitch = -85;
+        } else if (cameraMode == CAM_CONTROL_SCREEN) {
+            // Full first-person look: 360 degree yaw, look up/down within reason
+            cam.freeYaw += dx * 0.3f;
+            cam.freePitch -= dy * 0.25f;
+            if (cam.freePitch > 85) cam.freePitch = 85;
+            if (cam.freePitch < -85) cam.freePitch = -85;
         } else {
             cam.freeYaw += dx * 0.25f;
             cam.freePitch -= dy * 0.20f;
@@ -2932,6 +3824,7 @@ void timer(int value) {
     (void)value;
     updateIntro();
     updateSubmarine();
+    updateCrewWalk();
     glutPostRedisplay();
     glutTimerFunc(16, timer, 0); // ~60 FPS
 }
