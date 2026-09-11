@@ -411,7 +411,7 @@ void initSubmarine() {
     sub.yaw = 0; sub.pitch = 0; sub.roll = 0;
     sub.speed = 0; sub.targetSpeed = 0;
     sub.propellerAngle = 0;
-    sub.headlightsOn = true;
+    sub.headlightsOn = false;
     sub.depth = 0;
     sub.descentRate = 0;
 }
@@ -419,7 +419,7 @@ void initSubmarine() {
 void initCamera() {
     cam.orbitAngleH = 30.0f;
     cam.orbitAngleV = 15.0f;
-    cam.orbitDistance = 9.5f;
+    cam.orbitDistance = 14.0f;
     cam.freeX = 0; cam.freeY = 5; cam.freeZ = 15;
     cam.freeYaw = 0; cam.freePitch = 0;
 }
@@ -636,10 +636,10 @@ void drawSubmarineBody() {
     glPopMatrix();
 
     glPushMatrix();
-    glTranslatef(2.5f, 0, 0);
+    glTranslatef(2.85f, 0, 0);
     glColor3fv(hullDark);
-    glScalef(1.35f, 1.0f, 0.92f);
-    drawSphere(hullR, 48, 32);
+    glScalef(0.92f, 0.86f, 0.82f);
+    drawSphere(hullR, 24, 18);
     glPopMatrix();
 
     glPushMatrix();
@@ -877,7 +877,7 @@ void drawPropeller() {
 }
 
 void setupSubHeadlight() {
-    if (!sub.headlightsOn) { glDisable(GL_LIGHT2); return; }
+    if (!sub.headlightsOn || sub.y > -1.5f) { glDisable(GL_LIGHT2); return; }
     float yawRad = sub.yaw * DEG_TO_RAD;
     float pitchRad = sub.pitch * DEG_TO_RAD;
     float cp = cos(pitchRad);
@@ -917,7 +917,7 @@ void drawHeadlightBeam(float lx, float ly, float lz, float len, float farR) {
 }
 
 void drawSubmarineHeadlights() {
-    if (!sub.headlightsOn) return;
+    if (!sub.headlightsOn || sub.y > -1.5f) return;
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -934,9 +934,11 @@ void drawFullSubmarine() {
     glRotatef(sub.pitch, 0, 0, 1);
     glRotatef(sub.roll, 1, 0, 0);
     glScalef(SUB_SCALE * SUB_LEN, SUB_SCALE, SUB_SCALE);
-
+    glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
+    glDisable(GL_FOG);
     drawSubmarineBody();
+    glEnable(GL_FOG);
     drawPropeller();
     drawSubmarineHeadlights();
 
@@ -1029,24 +1031,22 @@ void drawDistantHills() {
     if (diveBlend <= 0) return;
     glDisable(GL_LIGHTING);
     glPushMatrix();
-    // Far hazy layer (atmospheric perspective: pale blue-violet)
     glColor3f(0.55f * diveBlend + 0.1f, 0.52f * diveBlend + 0.1f, 0.62f * diveBlend + 0.08f);
     glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(-85, 0, -62);
-    for (int i = 0; i <= 14; i++) {
-        float t = i / 14.0f;
-        float hx = -85 + t * 170.0f;
-        float hy = 3.2f + sin(t * 17.0f) * 1.1f + sin(t * 41.0f) * 0.5f;
-        glVertex3f(hx, hy, -62);
+    glVertex3f(-92, 0, -68);
+    for (int i = 0; i <= 18; i++) {
+        float t = i / 18.0f;
+        float hx = -92 + t * 184.0f;
+        float hy = 4.8f + sin(t * 13.0f) * 1.4f + sin(t * 29.0f) * 0.7f + sin(t*53.0f)*0.35f;
+        glVertex3f(hx, hy, -68);
     }
     glEnd();
-    // Near left headland: brown-green with ridge variation
     glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(-80, 0, -55);
-    for (int i = 0; i <= 12; i++) {
-        float t = i / 12.0f;
-        float hx = -80 + t * 58.0f;
-        float hy = 2.2f + sin(t * 9.0f) * 1.0f + sin(t * 23.0f) * 0.45f;
+    glVertex3f(-82, 0, -58);
+    for (int i = 0; i <= 16; i++) {
+        float t = i / 16.0f;
+        float hx = -82 + t * 62.0f;
+        float hy = 3.4f + sin(t * 7.0f) * 1.1f + sin(t * 19.0f) * 0.55f + sin(t*37.0f)*0.25f;
         float shade = 0.85f + 0.15f * sin(t * 31.0f);
         glColor3f((0.30f * diveBlend + 0.05f) * shade,
                   (0.26f * diveBlend + 0.04f) * shade,
@@ -1054,13 +1054,12 @@ void drawDistantHills() {
         glVertex3f(hx, hy, -55);
     }
     glEnd();
-    // Near right point: darker green slope
     glBegin(GL_TRIANGLE_FAN);
-    glVertex3f(8, 0, -57);
-    for (int i = 0; i <= 10; i++) {
-        float t = i / 10.0f;
-        float hx = 8 + t * 72.0f;
-        float hy = 1.7f + sin(t * 12.0f) * 0.7f + sin(t * 29.0f) * 0.3f;
+    glVertex3f(6, 0, -60);
+    for (int i = 0; i <= 14; i++) {
+        float t = i / 14.0f;
+        float hx = 6 + t * 78.0f;
+        float hy = 3.0f + sin(t * 9.0f) * 0.85f + sin(t * 23.0f) * 0.40f + sin(t*43.0f)*0.20f;
         float shade = 0.85f + 0.15f * sin(t * 27.0f + 2.0f);
         glColor3f((0.22f * diveBlend + 0.04f) * shade,
                   (0.30f * diveBlend + 0.04f) * shade,
@@ -1629,6 +1628,13 @@ void drawLightRays() {
 // DRAW INTERIOR
 // ============================================================
 void drawInterior() {
+    if (cameraMode == CAM_CONTROL_SCREEN) {
+        glDisable(GL_FOG);
+        glDisable(GL_LIGHTING);
+        glColor3f(0.85f, 0.12f, 0.12f);
+        glPushMatrix(); glTranslatef(0,0,0); glutWireCube(3.0f); glPopMatrix();
+        glEnable(GL_LIGHTING);
+    }
     GLfloat matSpec[] = { 0.55f, 0.57f, 0.62f, 1.0f };
     GLfloat matShine[] = { 48.0f };
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
@@ -1830,6 +1836,30 @@ void drawInterior() {
         glPopMatrix();
     }
 
+    // Two pilot seats like reference (black with headrests) + side crew benches
+    for(int seat=-1; seat<=1; seat+=2){
+        glPushMatrix(); glTranslatef(0.25f, -0.35f, seat*0.62f);
+        glColor3f(0.10f,0.10f,0.11f); glScalef(0.42f,0.05f,0.42f); drawCube(1.0f);
+        glTranslatef(0,0.28f, -0.12f); glScalef(1.0f,1.9f,0.22f); glColor3f(0.14f,0.14f,0.15f); drawCube(1.0f);
+        glTranslatef(0,0.32f,0); glColor3f(0.08f,0.08f,0.09f); glScalef(1.0f,0.5f,1.0f); drawCube(1.0f);
+        glPopMatrix();
+    }
+    for(size_t i=0;i<crew.size() && i<3;i++){
+        glPushMatrix(); glTranslatef(crew[i].x-0.16f, crew[i].y-0.22f, crew[i].z);
+        glColor3f(0.26f,0.27f,0.29f); glScalef(0.18f,0.04f,0.16f); drawCube(1.0f);
+        glColor3f(0.20f,0.21f,0.23f); glTranslatef( -0.08f, -0.14f, 0); glScalef(1.0f,1.8f,0.08f); drawCube(1.0f);
+        glPopMatrix();
+    }
+    glPushMatrix(); glTranslatef(-0.15f, -0.08f, 0.52f); glColor3f(0.32f,0.31f,0.29f); glScalef(0.85f,0.02f,0.42f); drawCube(1.0f); glPopMatrix();
+    glDisable(GL_LIGHTING);
+    glPushMatrix(); glTranslatef(-0.15f, -0.065f, 0.52f); glColor3f(0.92f,0.92f,0.88f); glScalef(0.70f,0.001f,0.32f); drawCube(1.0f); glPopMatrix();
+    for(int l=0;l<4;l++){ glPushMatrix(); glTranslatef(-0.28f + l*0.11f, -0.064f, 0.52f); glColor3f(0.20f,0.22f,0.28f); glScalef(0.06f,0.002f,0.28f); drawCube(1.0f); glPopMatrix(); }
+    glPushMatrix(); glTranslatef(0.05f, -0.065f, -0.48f); glColor3f(0.88f,0.85f,0.78f); glScalef(0.45f,0.001f,0.32f); drawCube(1.0f); glPopMatrix();
+    for(int s=-1;s<=1;s+=2){ for(int k=0;k<2;k++){ glPushMatrix(); glTranslatef(-0.95f + k*0.55f, 0.15f, s*1.18f); glColor3f(0.58f,0.58f,0.59f); drawCylinder(0.08f,0.95f,10); glColor3f(0.32f,0.32f,0.33f); glTranslatef(0,0.48f,0); drawCylinder(0.085f,0.04f,10); glTranslatef(0,-0.96f,0); drawCylinder(0.085f,0.04f,10); glPopMatrix(); } }
+    glPushMatrix(); glTranslatef(0.45f, 1.05f, 0.0f); glColor3f(0.28f,0.28f,0.30f); drawCylinder(0.06f,0.35f,8); glTranslatef(0,-0.18f,0); glColor3f(0.22f,0.22f,0.23f); drawCylinder(0.14f,0.08f,12); glDisable(GL_LIGHTING); glColor3f(1.0f,0.92f,0.70f); drawSphere(0.10f,10,8); glEnable(GL_LIGHTING); glPopMatrix();
+    for(int w=0;w<4;w++){ glPushMatrix(); glTranslatef(-0.55f + w*0.38f, 0.18f, 0.98f); glColor3f(0.12f,0.12f,0.14f); glScalef(0.32f,0.18f,0.02f); drawCube(1.0f); glTranslatef(0,0.02f,0.015f); glDisable(GL_LIGHTING); glColor3f(0.15f,0.45f,0.85f); glScalef(0.88f,0.78f,0.01f); drawCube(1.0f); glEnable(GL_LIGHTING); glPopMatrix(); }
+    glPushMatrix(); glTranslatef(1.25f, 0.15f, 1.28f); glRotatef(90,0,1,0); glColor3f(0.22f,0.24f,0.26f); drawCylinder(0.42f,0.04f,18); glColor3f(0.15f,0.35f,0.75f); drawDisk(0.08f,0.38f,18); glColor3f(0.30f,0.32f,0.34f); glTranslatef(0,0,0.02f); for(int s=0;s<6;s++){ glPushMatrix(); glRotatef(s*60,0,0,1); glTranslatef(0.30f,0,0); glScalef(0.06f,0.01f,0.01f); drawCube(1.0f); glPopMatrix(); } glPopMatrix();
+    glEnable(GL_LIGHTING);
     // Panoramic windows - large riveted frames, faint glass so outside ocean/fish/manta visible
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND); glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1844,25 +1874,8 @@ void drawInterior() {
         glPushMatrix(); glTranslatef(0.02f, 0, w/2+0.025f); glScalef(0.05f, h+0.06f, 0.05f); drawCube(1.0f); glPopMatrix();
         glPushMatrix(); glTranslatef(0.02f, 0, -w/2-0.025f); glScalef(0.05f, h+0.06f, 0.05f); drawCube(1.0f); glPopMatrix();
         for (int k = 0; k < 14; k++) { float zz = -w/2 + w * k / 13.0f; glPushMatrix(); glTranslatef(0.035f, h/2+0.025f, zz); glColor3f(0.14f,0.15f,0.16f); drawSphere(0.011f,4,3); glPopMatrix(); glPushMatrix(); glTranslatef(0.035f, -h/2-0.025f, zz); drawSphere(0.011f,4,3); glPopMatrix(); glColor3f(0.30f,0.34f,0.38f); }
-        if (texOceanView) {
-            glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texOceanView);
-            glColor3f(1,1,1);
-            float u0=0.12f, u1=0.88f, v0=0.18f, v1=0.82f;
-            if (h < 0.3f) { v0=0.10f; v1=0.28f; }
-            if (fabs(yaw) > 60) { u0=0.52f; u1=0.97f; }
-            else if (yaw < -10) { u0=0.03f; u1=0.42f; }
-            else if (yaw > 10) { u0=0.58f; u1=0.96f; }
-            glBegin(GL_QUADS);
-            glTexCoord2f(u0,v0); glVertex3f(0.012f, -h/2, -w/2);
-            glTexCoord2f(u1,v0); glVertex3f(0.012f, -h/2,  w/2);
-            glTexCoord2f(u1,v1); glVertex3f(0.012f,  h/2,  w/2);
-            glTexCoord2f(u0,v1); glVertex3f(0.012f,  h/2, -w/2);
-            glEnd();
-            glDisable(GL_TEXTURE_2D);
-        } else {
-            glColor4f(0.75f, 0.85f, 0.92f, 0.06f);
-            glPushMatrix(); glTranslatef(0.015f, 0, 0); glScalef(0.01f, h, w); drawCube(1.0f); glPopMatrix();
-        }
+        glColor4f(0.72f, 0.84f, 0.92f, 0.10f);
+        glPushMatrix(); glTranslatef(0.015f, 0, 0); glScalef(0.01f, h, w); drawCube(1.0f); glPopMatrix();
         glColor4f(1.0f,1.0f,1.0f,0.07f);
         glPushMatrix(); glTranslatef(0.016f, h*0.35f, 0); glScalef(0.012f, h*0.15f, w*0.92f); drawCube(1.0f); glPopMatrix();
         glPopMatrix();
@@ -2243,13 +2256,17 @@ void setupCamera() {
     }
     case CAM_CONTROL_SCREEN: {
         float subYawRad = sub.yaw * DEG_TO_RAD;
-        float sx = sub.x + cos(subYawRad) * 1.4f;
-        float sy = sub.y + 0.3f;
-        float sz = sub.z - sin(subYawRad) * 1.4f;
-        float sx2 = sub.x + cos(subYawRad) * 30.0f;
-        float sy2 = sub.y;
-        float sz2 = sub.z - sin(subYawRad) * 30.0f;
-        gluLookAt(sx, sy, sz, sx2, sy2, sz2, 0, 1, 0);
+        float cosY = cos(subYawRad), sinY = sin(subYawRad);
+        float lx = cam.freeX, lz = cam.freeZ;
+        float wx = sub.x + lx * cosY + lz * sinY;
+        float wz = sub.z - lx * sinY + lz * cosY;
+        float wy = sub.y + 0.52f + cam.freeY;
+        float fyaw = cam.freeYaw * DEG_TO_RAD;
+        float fpitch = cam.freePitch * DEG_TO_RAD;
+        float fx = wx + cos(fyaw) * cos(fpitch) * 2.0f;
+        float fy = wy + sin(fpitch) * 2.0f;
+        float fz = wz + sin(fyaw) * cos(fpitch) * 2.0f;
+        gluLookAt(wx, wy, wz, fx, fy, fz, 0, 1, 0);
         break;
     }
     case CAM_FREE: {
@@ -2466,9 +2483,8 @@ void drawMenuScreen() {
                  GLUT_BITMAP_HELVETICA_18);
     }
 
-    // Menu items
-    const char* menuItems[] = { "START MISSION", "EXTERNAL 3D VIEW", "CONTROLS", "EXIT" };
-    int menuCount = 4;
+    const char* menuItems[] = { "START MISSION", "CREW CABIN VIEW", "EXTERNAL 3D VIEW", "CONTROLS", "EXIT" };
+    int menuCount = 5;
 
     for (int i = 0; i < menuCount; i++) {
         float yPos = windowHeight - 280 - i * 50.0f;
@@ -2615,13 +2631,14 @@ void display() {
         drawParticles();
     }
 
-    // Draw submarine (visible in INTRO surface shot too, like 1st ref)
     if (gameState == STATE_PLAYING || gameState == STATE_DIVING ||
         gameState == STATE_INTRO) {
         if (cameraMode == CAM_INTERIOR || cameraMode == CAM_FRONT_WINDOW ||
             cameraMode == CAM_LEFT_WINDOW || cameraMode == CAM_RIGHT_WINDOW ||
             cameraMode == CAM_CONTROL_SCREEN) {
+            glDisable(GL_FOG);
             drawInterior();
+            glEnable(GL_FOG);
         } else {
             drawFullSubmarine();
         }
@@ -2665,23 +2682,34 @@ void keyboardDown(unsigned char key, int x, int y) {
                 currentMission = MISSION_DIVE;
                 cameraMode = CAM_INTERIOR;
                 userCameraChoice = true;
+                cam.freeYaw = 0; cam.freePitch = 0;
                 missionTimer = 0;
                 sub.x = 0; sub.y = -5.0f; sub.z = 0;
                 sub.depth = 5.0f;
                 break;
-            case 1: // EXTERNAL 3D VIEW
+            case 1: // CREW CABIN VIEW - first-person walkable middle
+                gameState = STATE_PLAYING;
+                cameraMode = CAM_CONTROL_SCREEN;
+                userCameraChoice = true;
+                cam.freeX = 0.0f; cam.freeY = 0.0f; cam.freeZ = 0.0f;
+                cam.freeYaw = 0; cam.freePitch = 0;
+                missionTimer = 0;
+                sub.x = 0; sub.y = -5.0f; sub.z = 0;
+                sub.depth = 5.0f;
+                break;
+            case 2: // EXTERNAL 3D VIEW
                 gameState = STATE_PLAYING;
                 cameraMode = CAM_EXTERNAL;
                 userCameraChoice = true;
-                cam.orbitDistance = 9.5f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f;
+                cam.orbitDistance = 14.0f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f;
                 currentMission = MISSION_DIVE;
                 missionTimer = 0;
                 sub.x = 0; sub.y = -5.0f; sub.z = 0;
                 sub.depth = 5.0f;
                 break;
-            case 2: // CONTROLS - show info
+            case 3: // CONTROLS - show info
                 break;
-            case 3: // EXIT
+            case 4: // EXIT
                 exit(0);
                 break;
             }
@@ -2699,7 +2727,7 @@ void keyboardDown(unsigned char key, int x, int y) {
                 cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
             } else if (key == 'v' || key == 'V') {
                 cameraMode = CAM_EXTERNAL;
-                if (cam.orbitDistance > 12.0f) { cam.orbitDistance = 9.5f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
+                if (cam.orbitDistance > 16.0f || cam.orbitDistance < 10.0f) { cam.orbitDistance = 14.0f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
             } else {
                 cameraMode = CAM_INTERIOR;
             }
@@ -2713,6 +2741,20 @@ void keyboardDown(unsigned char key, int x, int y) {
         return;
     }
 
+    if (cameraMode == CAM_CONTROL_SCREEN) {
+        float yawR = cam.freeYaw * DEG_TO_RAD;
+        float step = 0.12f;
+        switch (key) {
+        case 'w': case 'W': cam.freeX += cos(yawR)*step; cam.freeZ += sin(yawR)*step; break;
+        case 's': case 'S': cam.freeX -= cos(yawR)*step; cam.freeZ -= sin(yawR)*step; break;
+        case 'a': case 'A': cam.freeX -= sin(yawR)*step; cam.freeZ += cos(yawR)*step; break;
+        case 'd': case 'D': cam.freeX += sin(yawR)*step; cam.freeZ -= cos(yawR)*step; break;
+        default: break;
+        }
+        if (cam.freeX > 1.1f) cam.freeX=1.1f; if (cam.freeX < -1.1f) cam.freeX=-1.1f;
+        if (cam.freeZ > 1.0f) cam.freeZ=1.0f; if (cam.freeZ < -1.0f) cam.freeZ=-1.0f;
+        if (key=='w'||key=='W'||key=='s'||key=='S'||key=='a'||key=='A'||key=='d'||key=='D') return;
+    }
     // Playing state controls
     switch (key) {
     case 'w': case 'W':
@@ -2753,7 +2795,7 @@ void keyboardDown(unsigned char key, int x, int y) {
     case 'v': case 'V':
         cameraMode = CAM_EXTERNAL;
         userCameraChoice = true;
-        if (cam.orbitDistance > 12.0f) { cam.orbitDistance = 9.5f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
+        if (cam.orbitDistance > 16.0f || cam.orbitDistance < 10.0f) { cam.orbitDistance = 14.0f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
         break;
     case 'i': case 'I':
         cameraMode = CAM_INTERIOR;
@@ -2789,11 +2831,11 @@ void specialKeys(int key, int x, int y) {
     if (gameState == STATE_MENU) {
         if (key == GLUT_KEY_UP) {
             menuSelection--;
-            if (menuSelection < 0) menuSelection = 3;
+            if (menuSelection < 0) menuSelection = 4;
         }
         if (key == GLUT_KEY_DOWN) {
             menuSelection++;
-            if (menuSelection > 3) menuSelection = 0;
+            if (menuSelection > 4) menuSelection = 0;
         }
         glutPostRedisplay();
         return;
