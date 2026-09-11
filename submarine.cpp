@@ -336,17 +336,62 @@ void initTextures() {
         }
         texSand = uploadTexture(W, H, px, false, true);
     }
-    // ---- Hull metal: bright base (multiplier) + panel lines + rivets + grain ----
+    // ---- Hull camo: 4-tone woodland + riveted black plate overlay ----
     {
-        const int W = 128, H = 128;
-        static unsigned char px[128 * 128 * 3];
+        const int W = 256, H = 256;
+        static unsigned char px[256 * 256 * 3];
         for (int y = 0; y < H; y++) for (int x = 0; x < W; x++) {
-            float v = 218 + (noise01(x, y, 11) - 0.5f) * 14;
-            if (y % 21 == 0) v = 150; // plate seams
-            if (x % 42 == 0) v = 160;
-            if (y % 21 == 0 && x % 7 == 0) v = 120; // rivets
+            float fx = x * 0.055f, fy = y * 0.055f;
+            float wx = smoothNoise(fx * 0.35f, fy * 0.35f, 81) * 6.0f;
+            float wy = smoothNoise(fx * 0.35f + 50, fy * 0.35f + 50, 82) * 6.0f;
+            float ax = fx + wx, ay = fy + wy;
+            float n1 = smoothNoise(ax * 0.55f, ay * 0.55f, 11);
+            float n2 = smoothNoise(ax * 1.05f + 100, ay * 1.05f + 100, 12);
+            float n3 = smoothNoise(ax * 2.10f, ay * 2.10f, 13) * 0.5f;
+            float n = n1 * 0.60f + n2 * 0.32f + n3 * 0.08f;
+            float n4 = smoothNoise(ax * 0.90f, ay * 0.45f, 14);
+            n += (n4 - 0.5f) * 0.18f;
+            if (n < 0) n = 0; if (n > 1) n = 1;
+            float r, g, b;
+            if (n < 0.28f)      { r = 26;  g = 38;  b = 18; }
+            else if (n < 0.52f) { r = 88;  g = 108; b = 68; }
+            else if (n < 0.74f) { r = 192; g = 178; b = 132; }
+            else                { r = 102; g = 72;  b = 42; }
+            float plateH = 64.0f, plateW = 64.0f;
+            int row = (int)(y / plateH);
+            float off = (row & 1) ? plateW * 0.5f : 0.0f;
+            float lx = fmod(x + off, plateW);
+            float ly = fmod(y, plateH);
+            float seam = 0;
+            if (lx < 1.5f || lx > plateW - 1.5f) seam = 1.0f;
+            if (ly < 1.5f || ly > plateH - 1.5f) seam = 1.0f;
+            float rivet = 0, shine = 0;
+            float rxA[5] = {6, plateW-6, 6, plateW-6, plateW*0.5f};
+            float ryA[5] = {6, 6, plateH-6, plateH-6, 6};
+            if (row & 1) { ryA[4] = plateH-6; }
+            for (int k = 0; k < 5; k++) {
+                float dx = lx - rxA[k], dy = ly - ryA[k];
+                float d = sqrt(dx*dx + dy*dy);
+                if (d < 4.2f) {
+                    rivet = 1.0f - d/4.2f;
+                    if (d < 2.0f && dx < -0.3f && dy < -0.3f) shine = (2.0f - d)/2.0f;
+                }
+                float dx2 = lx - rxA[k], dy2 = ly - (ryA[k] + plateH*0.5f);
+                if (fabs(dy2) < 5 && fabs(dx2) < 4) {
+                    float d2 = sqrt(dx2*dx2 + dy2*dy2*0.9f);
+                    if (d2 < 3.8f) { float v = 1.0f - d2/3.8f; if (v > rivet) { rivet = v; if (d2 < 1.8f && dx2 < -0.2f) shine = (1.8f - d2)/1.8f; } }
+                }
+            }
+            if (shine > 0) { r = r*(1-shine) + 155*shine; g = g*(1-shine) + 156*shine; b = b*(1-shine) + 158*shine; }
+            else if (rivet > 0) { float k = rivet*0.72f; r = r*(1-k) + 18*k; g = g*(1-k) + 19*k; b = b*(1-k) + 22*k; }
+            if (seam > 0 && rivet < 0.5f) { float k = seam*0.38f; r = r*(1-k) + 42*k; g = g*(1-k) + 44*k; b = b*(1-k) + 48*k; }
+            float grain = (noise01(x, y, 19) - 0.5f) * 7;
+            r += grain; g += grain; b += grain;
+            if (r < 0) r = 0; if (r > 255) r = 255;
+            if (g < 0) g = 0; if (g > 255) g = 255;
+            if (b < 0) b = 0; if (b > 255) b = 255;
             int o = (y * W + x) * 3;
-            px[o] = px[o + 1] = px[o + 2] = (unsigned char)v;
+            px[o] = (unsigned char)r; px[o+1] = (unsigned char)g; px[o+2] = (unsigned char)b;
         }
         texHull = uploadTexture(W, H, px, false, true);
     }
@@ -638,18 +683,23 @@ void drawSubmarineBody() {
     float hullTopC[3] = { 0.26f, 0.27f, 0.29f };
     float hullRed[3] = { 0.72f, 0.14f, 0.14f };
 
+    bool useCamo = texHull != 0;
+    if (useCamo) { glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texHull); glColor3f(1,1,1); }
     glPushMatrix();
-    glColor3fv(hullDark);
+    if (!useCamo) glColor3fv(hullDark);
     glRotatef(90, 0, 1, 0);
     glTranslatef(0, 0, -2.5f);
     GLUquadric* hullQ = gluNewQuadric();
+    gluQuadricNormals(hullQ, GLU_SMOOTH);
+    if (useCamo) gluQuadricTexture(hullQ, GL_TRUE);
     gluCylinder(hullQ, hullR, hullR, 5.0f, 48, 6);
     gluDeleteQuadric(hullQ);
     glPopMatrix();
 
     glPushMatrix();
     glTranslatef(2.85f, 0, 0);
-    glColor3fv(hullDark);
+    if (!useCamo) glColor3fv(hullDark);
+    else glColor3f(1,1,1);
     glScalef(0.92f, 0.86f, 0.82f);
     drawSphere(hullR, 24, 18);
     glPopMatrix();
@@ -664,11 +714,15 @@ void drawSubmarineBody() {
     glPushMatrix();
     glTranslatef(-2.5f, 0, 0);
     glRotatef(-90, 0, 1, 0);
-    glColor3fv(hullDark);
+    if (!useCamo) glColor3fv(hullDark);
+    else glColor3f(1,1,1);
     GLUquadric* taperQ = gluNewQuadric();
+    gluQuadricNormals(taperQ, GLU_SMOOTH);
+    if (useCamo) gluQuadricTexture(taperQ, GL_TRUE);
     gluCylinder(taperQ, hullR, 0.30f, 1.7f, 22, 3);
     gluDeleteQuadric(taperQ);
     glPopMatrix();
+    if (useCamo) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
     glPushMatrix();
     glTranslatef(0.0f, -0.42f, 0);
     glColor3fv(hullRed);
@@ -1970,9 +2024,12 @@ void drawCrewCabin() {
             float yMid, zMid;
             hullYZ(0.5f * (t0 + t1), yMid, zMid);
 
+            // nose region ahead of the forward bulkhead -> re-drawn as glass below
+            float xMid = 0.5f * (x0 + x1);
+            if (xMid > CR_XF - 0.03f) continue;
+
             // cut out round portholes in the side walls (|t| near 0 or PI)
             bool skip = false;
-            float xMid = 0.5f * (x0 + x1);
             if (fabs(zMid) > 0.5f) {
                 for (int p = 0; p < 3 && !skip; p++) {
                     float dx = xMid - portholeX[p];
@@ -2003,6 +2060,41 @@ void drawCrewCabin() {
         }
     }
     glEnd();
+
+    // Nose viewing glass - the band ahead of the forward bulkhead becomes a
+    // transparent bow dome so the big control screen reads as a live front view
+    // out of the bow (the underwater world is already painted by display()).
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glBegin(GL_QUADS);
+    int ixNose = (int)((CR_XF - 0.03f + CR_AX) / xStride);
+    for (int ix = ixNose; ix < 25; ix++) {
+        float x0 = -CR_AX + ix * xStride;
+        float x1 = x0 + xStride;
+        for (int it = 0; it < CR_SEG; it++) {
+            float t0 = it * tStep;
+            float t1 = t0 + tStep;
+            float yA, zA, yB, zB, yC, zC, yD, zD;
+            hullYZ(t0, yA, zA);
+            hullYZ(t1, yB, zB);
+            hullYZ(t1, yC, zC);
+            hullYZ(t0, yD, zD);
+            float nAy, nAz, nBy, nBz, nCy, nCz, nDy, nDz;
+            hullNormal(yA, zA, nAy, nAz);
+            hullNormal(yB, zB, nBy, nBz);
+            hullNormal(yC, zC, nCy, nCz);
+            hullNormal(yD, zD, nDy, nDz);
+            glColor4f(0.22f, 0.50f, 0.70f, 0.14f);
+            glNormal3f(0.0f, nAy, nAz); glVertex3f(x0, yA, zA);
+            glNormal3f(0.0f, nBy, nBz); glVertex3f(x0, yB, zB);
+            glNormal3f(0.0f, nCy, nCz); glVertex3f(x1, yC, zC);
+            glNormal3f(0.0f, nDy, nDz); glVertex3f(x1, yD, zD);
+        }
+    }
+    glEnd();
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
 
     // Rib seams (circumferential) + weld meridians - crisp dark lines
     glDisable(GL_LIGHTING);
@@ -2036,10 +2128,16 @@ void drawCrewCabin() {
     glEnable(GL_LIGHTING);
 
     // Closed end caps so the tube is sealed in every direction
-    auto capFan = [&](float capX, float dirX) {
+    auto capFan = [&](float capX, float dirX, bool glass) {
         glDisable(GL_LIGHTING);
         glPushMatrix();
-        glColor3f(0.14f, 0.15f, 0.16f);
+        if (glass) {
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glColor4f(0.22f, 0.50f, 0.70f, 0.14f);
+        } else {
+            glColor3f(0.14f, 0.15f, 0.16f);
+        }
         glNormal3f(dirX, 0.0f, 0.0f);
         glBegin(GL_TRIANGLE_FAN);
         glVertex3f(capX, CR_CY, 0.0f);
@@ -2050,11 +2148,12 @@ void drawCrewCabin() {
             glVertex3f(capX, y, z);
         }
         glEnd();
+        if (glass) glDisable(GL_BLEND);
         glPopMatrix();
         glEnable(GL_LIGHTING);
     };
-    capFan(-CR_AX,  1.0f);
-    capFan( CR_AX, -1.0f);
+    capFan(-CR_AX,  1.0f, false);
+    capFan( CR_AX, -1.0f, true);
 
     // ------------------------------------------------------------------
     // 2. DECK - solid metal platform, walking plates, centre aisle stripe
@@ -2251,29 +2350,30 @@ void drawCrewCabin() {
     // ------------------------------------------------------------------
     // 5. FORWARD BULKHEAD + BIG CONTROL SCREEN + SIDE DISPLAYS
     // ------------------------------------------------------------------
+    // Lower part of the forward bulkhead stays solid metal; above it the hull
+    // nose band + cap (already drawn as glass) become the 'front view'.
     glPushMatrix();
-    glTranslatef(CR_XF, 0.18f, 0.0f);
+    glTranslatef(CR_XF, -0.185f, 0.0f);
     glColor3f(0.36f, 0.40f, 0.44f);
-    glScalef(0.08f, 1.42f, 2.46f);
+    glScalef(0.14f, 0.68f, 2.46f);
     drawCube(1.0f);
     glPopMatrix();
-    for (int sy = 0; sy < 3; sy++) {
-        glPushMatrix();
-        glTranslatef(CR_XF - 0.045f, -0.15f + sy * 0.42f, 0.0f);
-        glColor3f(0.18f, 0.20f, 0.22f);
-        glScalef(0.012f, 0.01f, 2.20f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-    for (int rv = 0; rv < 4; rv++) {
+    for (int rv = 0; rv < 3; rv++) {
         for (int rz = -1; rz <= 1; rz += 2) {
             glPushMatrix();
-            glTranslatef(CR_XF - 0.035f, -0.28f + rv * 0.26f, rz * 1.10f);
+            glTranslatef(CR_XF - 0.035f, -0.34f + rv * 0.18f, rz * 1.10f);
             glColor3f(0.12f, 0.13f, 0.15f);
             drawSphere(0.011f, 4, 3);
             glPopMatrix();
         }
     }
+    // top header beam spanning the observation glass
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.05f, 1.12f, 0.0f);
+    glColor3f(0.30f, 0.34f, 0.38f);
+    glScalef(0.14f, 0.06f, 1.90f);
+    drawCube(1.0f);
+    glPopMatrix();
     // side status displays flanking the main screen
     for (int s = -1; s <= 1; s += 2) {
         glPushMatrix();
@@ -2291,62 +2391,68 @@ void drawCrewCabin() {
         glPopMatrix();
         glEnable(GL_LIGHTING);
     }
-    // main sonar / navigation screen frame
+    // main front-view screen: dark bezel + glass pane revealing the bow view
     glPushMatrix();
     glTranslatef(CR_XF - 0.13f, 0.18f + 0.36f, 0.0f);
     glColor3f(0.10f, 0.12f, 0.14f);
     glScalef(0.06f, 0.88f, 1.94f);
     drawCube(1.0f);
     glPopMatrix();
+    // translucent glass pane - the underwater world behind shows through
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDisable(GL_LIGHTING);
     glPushMatrix();
     glTranslatef(CR_XF - 0.11f, 0.54f, 0.0f);
-    glColor3f(0.04f, 0.20f, 0.44f);
-    glScalef(0.015f, 0.80f, 1.84f);
+    glColor4f(0.20f, 0.50f, 0.78f, 0.10f);
+    glScalef(0.012f, 0.80f, 1.84f);
     drawCube(1.0f);
     glPopMatrix();
+    // faint HUD overlay so it reads as an instrument screen not a hole
+    float scan = 0.54f + sin(introTimer * 0.0016f) * 0.18f;
     glPushMatrix();
-    glTranslatef(CR_XF - 0.12f, 0.54f, 0.0f);
-    glColor3f(0.10f, 0.45f, 0.72f);
-    glScalef(0.012f, 0.66f, 1.60f);
+    glTranslatef(CR_XF - 0.115f, scan, 0.0f);
+    glColor4f(0.45f, 0.90f, 1.0f, 0.22f);
+    glScalef(0.010f, 0.006f, 1.80f);
     drawCube(1.0f);
     glPopMatrix();
-    for (int sl = 0; sl < 7; sl++) {
+    for (int cn = -1; cn <= 1; cn += 2) {
         glPushMatrix();
-        glTranslatef(CR_XF - 0.125f, 0.14f + sl * 0.105f, 0.0f);
-        glColor3f(0.05f, 0.30f, 0.55f);
-        glScalef(0.012f, 0.012f, 1.78f);
+        glTranslatef(CR_XF - 0.115f, 0.18f, cn * 0.88f);
+        glColor4f(0.35f, 0.85f, 1.0f, 0.28f);
+        glScalef(0.010f, 0.015f, 0.02f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
+    for (int cn = -1; cn <= 1; cn += 2) {
+        glPushMatrix();
+        glTranslatef(CR_XF - 0.115f, 0.885f, cn * 0.88f);
+        glColor4f(0.35f, 0.85f, 1.0f, 0.28f);
+        glScalef(0.010f, 0.015f, 0.02f);
         drawCube(1.0f);
         glPopMatrix();
     }
     glPushMatrix();
-    glTranslatef(CR_XF - 0.13f, 0.54f, -0.55f);
-    glRotatef(90, 0, 1, 0);
-    glColor3f(0.30f, 0.85f, 1.0f);
-    drawDisk(0.05f, 0.34f, 28);
+    glTranslatef(CR_XF - 0.115f, 0.885f, 0.0f);
+    glColor4f(0.35f, 0.85f, 1.0f, 0.25f);
+    glScalef(0.010f, 0.015f, 1.84f);
+    drawCube(1.0f);
     glPopMatrix();
-    for (int bl = 0; bl < 5; bl++) {
-        float a = (float)bl * 1.256637f;
-        glPushMatrix();
-        glTranslatef(CR_XF - 0.13f, 0.54f + sin(a) * 0.30f, -0.55f + cos(a) * 0.30f);
-        glColor3f(0.9f, 0.9f, 0.2f);
-        drawSphere(0.020f, 6, 5);
-        glPopMatrix();
-    }
+    glPushMatrix();
+    glTranslatef(CR_XF - 0.115f, 0.54f, -0.88f);
+    glColor4f(0.35f, 0.85f, 1.0f, 0.25f);
+    glScalef(0.010f, 0.76f, 0.015f);
+    drawCube(1.0f);
+    glPopMatrix();
     for (int bar = 0; bar < 4; bar++) {
         glPushMatrix();
-        glTranslatef(CR_XF - 0.13f, 0.20f + bar * 0.17f, 0.72f);
-        glColor3f(0.2f, 0.8f, 0.4f);
-        glScalef(0.012f, 0.11f, 0.14f);
+        glTranslatef(CR_XF - 0.12f, 0.16f + bar * 0.055f, 0.70f);
+        glColor4f(0.2f, 0.9f, 0.5f, 0.55f);
+        glScalef(0.010f, 0.045f, 0.05f + bar * 0.02f);
         drawCube(1.0f);
         glPopMatrix();
     }
-    glPushMatrix();
-    glTranslatef(CR_XF - 0.13f, 0.885f, -0.40f);
-    glColor3f(0.8f, 0.85f, 0.9f);
-    glScalef(0.012f, 0.02f, 0.80f);
-    drawCube(1.0f);
-    glPopMatrix();
+    glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
     // soft glow bleeding in front of the screen
     glEnable(GL_BLEND);
