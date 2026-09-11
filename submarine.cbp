@@ -44,7 +44,7 @@
 			<Add option="-mconsole" />
 		</Linker>
 		<Unit filename="submarine.cpp">
-			<Option compilerVar="CC" />
+			<Option compilerVar="CPP" />
 		</Unit>
 		<Extensions>
 			<code_completion />
