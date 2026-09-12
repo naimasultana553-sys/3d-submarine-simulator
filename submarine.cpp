@@ -2099,7 +2099,7 @@ void drawCrewCabin() {
                 // solid roof overhead: opaque ceiling metal, not glass
                 glColor4f(0.30f, 0.32f, 0.35f, 1.0f);
             } else {
-                glColor4f(0.22f, 0.50f, 0.70f, 0.14f);
+                glColor4f(0.22f, 0.50f, 0.70f, 0.07f);
             }
             glNormal3f(0.0f, nAy, nAz); glVertex3f(x0, yA, zA);
             glNormal3f(0.0f, nBy, nBz); glVertex3f(x0, yB, zB);
@@ -2149,7 +2149,7 @@ void drawCrewCabin() {
         if (glass) {
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glColor4f(0.22f, 0.50f, 0.70f, 0.14f);
+            glColor4f(0.22f, 0.50f, 0.70f, 0.07f);
         } else {
             glColor3f(0.14f, 0.15f, 0.16f);
         }
@@ -2417,28 +2417,8 @@ void drawCrewCabin() {
         drawCube(1.0f);
         glPopMatrix();
     }
-    // big bow window: no opaque panel here - the opening stays clear so the
-    // crew looks straight out at the live ocean through the nose glass.
-    // Only a faint glass veil keeps the "window" read with a touch of sheen.
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glPushMatrix();
-    glTranslatef(CR_XF - 0.14f, 0.54f, 0.0f);
-    glColor4f(0.35f, 0.65f, 0.90f, 0.05f);
-    glScalef(0.012f, 0.66f, 1.66f);
-    drawCube(1.0f);
-    glPopMatrix();
-    // faint diagonal glass reflection streak on the viewer side
-    glColor4f(0.70f, 0.90f, 1.0f, 0.06f);
-    glBegin(GL_QUADS);
-    glVertex3f(CR_XF - 0.155f, 0.25f, -0.80f);
-    glVertex3f(CR_XF - 0.155f, 0.25f, -0.55f);
-    glVertex3f(CR_XF - 0.155f, 0.87f, -0.10f);
-    glVertex3f(CR_XF - 0.155f, 0.87f, -0.35f);
-    glEnd();
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
+    // big bow window: fully open glass, no veils or glows - the ocean stays
+    // crisp. Only the thin structural nose glass tints the view slightly.
     // EXTERNAL CAMERA - LIVE caption banner under the feed
     glDisable(GL_LIGHTING);
     glPushMatrix();
@@ -2455,18 +2435,6 @@ void drawCrewCabin() {
     drawSphere(0.016f, 6, 5);
     glPopMatrix();
     glEnable(GL_LIGHTING);
-    // soft glow bleeding in front of the screen
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glDisable(GL_LIGHTING);
-    glPushMatrix();
-    glTranslatef(CR_XF - 0.30f, 0.54f, 0.0f);
-    glColor4f(0.08f, 0.35f, 0.62f, 0.12f);
-    glScalef(0.30f, 0.90f, 2.00f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glEnable(GL_LIGHTING);
-    glDisable(GL_BLEND);
     // red / green running lamps near the top corners
     for (int s = -1; s <= 1; s += 2) {
         glDisable(GL_LIGHTING);
