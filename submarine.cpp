@@ -1448,11 +1448,22 @@ void drawCoral() {
     }
 }
 
+// Crew cabin occupies world space around the sub - keep sea life out of
+// the room in crew view (they still swim past right outside the window)
+bool insideCrewCabin(float x, float y, float z) {
+    if (cameraMode != CAM_CONTROL_SCREEN) return false;
+    if (fabs(x - sub.x) > 3.4f) return false;
+    if (fabs(z - sub.z) > 2.6f) return false;
+    if (y < sub.y - 1.4f || y > sub.y + 2.6f) return false;
+    return true;
+}
+
 void drawFish() {
     float t = introTimer * 0.001f;
 
     for (size_t i = 0; i < fishes.size(); i++) {
         Fish& f = fishes[i];
+        if (insideCrewCabin(f.x, f.y, f.z)) continue;
         glPushMatrix();
         glTranslatef(f.x, f.y, f.z);
 
@@ -1520,6 +1531,7 @@ void drawSharks() {
         Shark& s = sharks[i];
         float sx = s.cx + cos(s.angle) * s.radius;
         float sz = s.cz + sin(s.angle) * s.radius;
+        if (insideCrewCabin(sx, s.cy, sz)) continue;
         glPushMatrix();
         glTranslatef(sx, s.cy, sz);
         glRotatef(-(s.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
@@ -1564,6 +1576,7 @@ void drawRays() {
         Ray& r = rays[i];
         float rx = r.cx + cos(r.angle) * r.radius;
         float rz = r.cz + sin(r.angle) * r.radius;
+        if (insideCrewCabin(rx, r.cy, rz)) continue;
         float flap = sin(introTimer * 0.003f + r.phase) * 0.12f;
         glPushMatrix();
         glTranslatef(rx, r.cy + flap * 2.0f, rz);
@@ -1621,6 +1634,7 @@ void drawBubbles() {
 
     for (size_t i = 0; i < bubbles.size(); i++) {
         Bubble& b = bubbles[i];
+        if (insideCrewCabin(b.x, b.y, b.z)) continue;
         glPushMatrix();
         glTranslatef(b.x + sin(b.wobblePhase) * b.wobble, b.y, b.z);
         glColor4f(0.5f, 0.7f, 1.0f, 0.3f);
