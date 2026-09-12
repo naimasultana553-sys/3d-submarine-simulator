@@ -2570,9 +2570,10 @@ void drawCrewCabin() {
     glEnd();
 
     // Nose viewing glass - the band ahead of the forward bulkhead becomes a
-    // transparent bow window (the underwater world is already painted by
-    // display()). The overhead sector stays solid metal so no sky/clouds
-    // leak through the ceiling - glass only where the crew looks out.
+    // bow window (the underwater world is already painted by display()). A
+    // solid ash-gray metal brow covers the whole upper sector above eye
+    // level so the bright ocean surface / sky never washes across the top
+    // of the room - glass stays only down in the lower half toward the sea.
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -2595,8 +2596,9 @@ void drawCrewCabin() {
             hullNormal(yC, zC, nCy, nCz);
             hullNormal(yD, zD, nDy, nDz);
             float tMid = 0.5f * (t0 + t1);
-            if (sin(tMid) > 0.45f) {
-                // solid roof overhead: opaque ceiling metal, not glass
+            if (sin(tMid) > 0.10f) {
+                // solid ash-gray metal roof everywhere above eye level, so
+                // the curved interior hull closes off the top of the room
                 glColor4f(0.30f, 0.32f, 0.35f, 1.0f);
             } else {
                 glColor4f(0.22f, 0.50f, 0.70f, 0.07f);
@@ -2643,7 +2645,7 @@ void drawCrewCabin() {
     glEnable(GL_LIGHTING);
 
     // Closed end caps so the tube is sealed in every direction
-    auto capFan = [&](float capX, float dirX, bool glass) {
+    auto capFan = [&](float capX, float dirX, bool glass, float solidSin) {
         glDisable(GL_LIGHTING);
         glPushMatrix();
         if (glass) {
@@ -2660,6 +2662,11 @@ void drawCrewCabin() {
             float t = (float)it * tStep;
             float y, z;
             hullYZ(t, y, z);
+            if (glass && sin(t) > solidSin) {
+                // upper sectors of the bow dome use the same ash-gray metal
+                // brow, so no bright water or sky washes over the room top
+                glColor4f(0.30f, 0.32f, 0.35f, 1.0f);
+            }
             glVertex3f(capX, y, z);
         }
         glEnd();
@@ -2667,8 +2674,8 @@ void drawCrewCabin() {
         glPopMatrix();
         glEnable(GL_LIGHTING);
     };
-    capFan(-CR_AX,  1.0f, false);
-    capFan( CR_AX, -1.0f, true);
+    capFan(-CR_AX,  1.0f, false, 0.10f);
+    capFan( CR_AX, -1.0f, true,  0.10f);
 
     // ------------------------------------------------------------------
     // 2. DECK - solid metal platform, walking plates, centre aisle stripe
@@ -2777,24 +2784,22 @@ void drawCrewCabin() {
     glScalef(2.70f, 0.06f, 0.20f);
     drawCube(1.0f);
     glPopMatrix();
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    // Overhead lighting is matte and low-glare: a recessed ash-gray strip
+    // with plain lamp caps. No additive blending, so no white blur lobes
+    // wash across the curved ceiling at the top of the room.
     glPushMatrix();
     glTranslatef(0.0f, 0.775f, 0.0f);
-    glColor4f(1.0f, 0.98f, 0.90f, 0.95f);
-    glScalef(2.40f, 0.008f, 0.13f);
+    glColor3f(0.46f, 0.47f, 0.49f);
+    glScalef(2.40f, 0.010f, 0.13f);
     drawCube(1.0f);
     glPopMatrix();
     for (int h = 0; h < 5; h++) {
         glPushMatrix();
-        glColor4f(1.0f, 0.90f, 0.75f, 0.10f);
+        glColor3f(0.42f, 0.43f, 0.45f);
         glTranslatef(-1.20f + h * 0.60f, 0.79f, 0.0f);
-        drawSphere(0.22f, 8, 6);
+        drawSphere(0.05f, 8, 6);
         glPopMatrix();
     }
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
 
     for (int s = -1; s <= 1; s += 2) {
         // ventilation ducts
