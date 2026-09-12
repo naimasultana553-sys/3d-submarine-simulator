@@ -2402,107 +2402,92 @@ void drawCrewCabin() {
         drawCube(1.0f);
         glPopMatrix();
     }
-    // deep-sea camera feed painted flat on the screen surface (the hull behind
-    // stays solid so the feed reads as an instrument panel, not a window hole)
+    // deep-sea camera feed: opaque panel on the viewer side of the bezel,
+    // then all picture content drawn slightly in FRONT of it (smaller X =
+    // closer to the crew), so nothing is hidden behind the panel.
+    float feedX = CR_XF - 0.14f;    // panel centre (viewer side of bezel)
+    float feedY = 0.55f;
+    float ovX = CR_XF - 0.155f;     // overlay plane, in front of the panel
     glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glPushMatrix();
-    glTranslatef(CR_XF - 0.125f, 0.55f, 0.0f);
-    glColor4f(0.015f, 0.05f, 0.11f, 0.95f);
+    glTranslatef(feedX, feedY, 0.0f);
+    glColor3f(0.015f, 0.05f, 0.11f);
     glScalef(0.012f, 0.76f, 1.70f);
     drawCube(1.0f);
-    // vertical depth shading drifting with the ambient fog
+    glPopMatrix();
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // vertical depth shading bands across the picture
     for (int fb = 0; fb < 8; fb++) {
-        float fy = -0.38f + fb * 0.11f;
-        glColor4f(0.04f, 0.13f, 0.22f, 0.10f + fb * 0.012f);
+        float fy = feedY - 0.36f + fb * 0.095f;
+        glColor4f(0.05f, 0.16f, 0.27f, 0.35f);
         glBegin(GL_QUADS);
-        glVertex3f(0.008f, fy, -0.85f);
-        glVertex3f(0.008f, fy + 0.09f, -0.85f);
-        glVertex3f(0.008f, fy + 0.09f,  0.85f);
-        glVertex3f(0.008f, fy, 0.85f);
+        glVertex3f(ovX, fy, -0.80f);
+        glVertex3f(ovX, fy + 0.085f, -0.80f);
+        glVertex3f(ovX, fy + 0.085f, 0.80f);
+        glVertex3f(ovX, fy, 0.80f);
         glEnd();
     }
     // sea-bed ridge along the bottom of the frame
-    glColor4f(0.06f, 0.13f, 0.11f, 0.55f);
+    glColor4f(0.10f, 0.30f, 0.22f, 0.90f);
     glBegin(GL_LINE_STRIP);
     for (int sb = -14; sb <= 14; sb++) {
-        float sz = sb * 0.125f;
-        glVertex3f(0.008f, -0.27f - fabs(sin(sz * 1.3f)) * 0.10f, sz);
+        float sz = sb * 0.06f;
+        glVertex3f(ovX, 0.245f - fabs(sin(sz * 2.6f)) * 0.05f, sz);
     }
     glEnd();
     // god-ray streaks raking down through the picture
     for (int rk = 0; rk < 5; rk++) {
-        float rz = -0.7f + rk * 0.35f;
-        glColor4f(0.25f, 0.60f, 0.85f, 0.06f);
+        float rz = -0.64f + rk * 0.32f;
+        glColor4f(0.30f, 0.65f, 0.90f, 0.18f);
         glBegin(GL_POLYGON);
-        glVertex3f(0.008f, 0.38f, rz);
-        glVertex3f(0.008f, -0.34f, rz + 0.05f);
-        glVertex3f(0.008f, -0.34f, rz + 0.08f);
-        glVertex3f(0.008f, 0.38f, rz + 0.03f);
+        glVertex3f(ovX, 0.90f, rz);
+        glVertex3f(ovX, 0.22f, rz + 0.05f);
+        glVertex3f(ovX, 0.22f, rz + 0.08f);
+        glVertex3f(ovX, 0.90f, rz + 0.03f);
         glEnd();
     }
-    // rising bubbles / suspended particles
+    // rising bubbles / suspended particles (true spheres in world space)
     for (int pb = 0; pb < 12; pb++) {
-        float pbz = -0.80f + noise01(pb, 4, 21) * 1.60f;
+        float pbz = -0.75f + noise01(pb, 4, 21) * 1.50f;
         float pbv = 0.0005f * (1.0f + noise01(pb, 9, 22));
-        float pby = -0.36f + fmod(introTimer * pbv + pb * 0.083f, 1.0f) * 0.74f;
-        float pbs = 0.012f + noise01(pb, 7, 23) * 0.015f;
-        glColor4f(0.65f, 0.90f, 1.0f, 0.25f);
+        float pby = 0.20f + fmod(introTimer * pbv + pb * 0.083f, 1.0f) * 0.68f;
+        float pbs = 0.008f + noise01(pb, 7, 23) * 0.010f;
+        glColor4f(0.65f, 0.90f, 1.0f, 0.70f);
         glPushMatrix();
-        glTranslatef(0.010f, pby, pbz);
+        glTranslatef(ovX, pby, pbz);
         drawSphere(pbs, 6, 5);
         glPopMatrix();
     }
-    glPopMatrix();
-    // thin glass veil over the feed panel
-    glPushMatrix();
-    glTranslatef(CR_XF - 0.11f, 0.55f, 0.0f);
-    glColor4f(0.20f, 0.50f, 0.78f, 0.08f);
-    glScalef(0.010f, 0.70f, 1.60f);
-    drawCube(1.0f);
-    glPopMatrix();
-    // faint HUD overlay so it reads as an instrument screen not a hole
+    // faint animated scan line + frame ticks + readout bars, all in front
     float scan = 0.54f + sin(introTimer * 0.0016f) * 0.18f;
     glPushMatrix();
-    glTranslatef(CR_XF - 0.115f, scan, 0.0f);
-    glColor4f(0.45f, 0.90f, 1.0f, 0.22f);
-    glScalef(0.010f, 0.006f, 1.80f);
+    glTranslatef(ovX, scan, 0.0f);
+    glColor4f(0.45f, 0.90f, 1.0f, 0.30f);
+    glScalef(0.006f, 0.006f, 1.60f);
     drawCube(1.0f);
     glPopMatrix();
     for (int cn = -1; cn <= 1; cn += 2) {
         glPushMatrix();
-        glTranslatef(CR_XF - 0.115f, 0.18f, cn * 0.88f);
-        glColor4f(0.35f, 0.85f, 1.0f, 0.28f);
-        glScalef(0.010f, 0.015f, 0.02f);
+        glTranslatef(ovX, 0.20f, cn * 0.78f);
+        glColor4f(0.35f, 0.85f, 1.0f, 0.60f);
+        glScalef(0.006f, 0.015f, 0.02f);
         drawCube(1.0f);
         glPopMatrix();
     }
     for (int cn = -1; cn <= 1; cn += 2) {
         glPushMatrix();
-        glTranslatef(CR_XF - 0.115f, 0.885f, cn * 0.88f);
-        glColor4f(0.35f, 0.85f, 1.0f, 0.28f);
-        glScalef(0.010f, 0.015f, 0.02f);
+        glTranslatef(ovX, 0.885f, cn * 0.78f);
+        glColor4f(0.35f, 0.85f, 1.0f, 0.60f);
+        glScalef(0.006f, 0.015f, 0.02f);
         drawCube(1.0f);
         glPopMatrix();
     }
-    glPushMatrix();
-    glTranslatef(CR_XF - 0.115f, 0.885f, 0.0f);
-    glColor4f(0.35f, 0.85f, 1.0f, 0.25f);
-    glScalef(0.010f, 0.015f, 1.84f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(CR_XF - 0.115f, 0.54f, -0.88f);
-    glColor4f(0.35f, 0.85f, 1.0f, 0.25f);
-    glScalef(0.010f, 0.76f, 0.015f);
-    drawCube(1.0f);
-    glPopMatrix();
     for (int bar = 0; bar < 4; bar++) {
         glPushMatrix();
-        glTranslatef(CR_XF - 0.12f, 0.16f + bar * 0.055f, 0.70f);
-        glColor4f(0.2f, 0.9f, 0.5f, 0.55f);
-        glScalef(0.010f, 0.045f, 0.05f + bar * 0.02f);
+        glTranslatef(ovX, 0.26f + bar * 0.05f, 0.62f);
+        glColor4f(0.2f, 0.9f, 0.5f, 0.80f);
+        glScalef(0.006f, 0.040f, 0.05f + bar * 0.02f);
         drawCube(1.0f);
         glPopMatrix();
     }
@@ -2511,13 +2496,13 @@ void drawCrewCabin() {
     // EXTERNAL CAMERA - LIVE caption banner under the feed
     glDisable(GL_LIGHTING);
     glPushMatrix();
-    glTranslatef(CR_XF - 0.145f, 0.235f, 0.0f);
-    glColor4f(0.0f, 0.02f, 0.05f, 0.85f);
+    glTranslatef(CR_XF - 0.16f, 0.235f, 0.0f);
+    glColor3f(0.0f, 0.02f, 0.05f);
     glScalef(0.02f, 0.055f, 0.95f);
     drawCube(1.0f);
     glPopMatrix();
     glColor3f(0.35f, 0.95f, 1.0f);
-    drawText3D(CR_XF - 0.20f, 0.245f, -0.38f, "EXTERNAL CAMERA - LIVE", GLUT_BITMAP_HELVETICA_18);
+    drawText3D(CR_XF - 0.175f, 0.225f, -0.30f, "EXT CAM - LIVE", GLUT_BITMAP_HELVETICA_12);
     glPushMatrix();
     glTranslatef(CR_XF - 0.155f, 0.235f, 0.80f);
     glColor4f(1.0f, 0.18f, 0.18f, 0.85f);
@@ -2586,9 +2571,11 @@ void drawCrewCabin() {
     auto scText = [&](float ly, float lz, const char* t, void* f) {
         drawText3D(0.011f, ly, lz, t, f);
     };
-    // each operator PC gets a different submarine control station
+    // each operator PC gets a different submarine control station.
+    // NOTE: bitmap fonts stay pixel-sized in 3D so they blow up on these
+    // tiny monitors - the PC screens use pure vector graphics only.
     auto drawCrewScreenUI = [&](int thema) {
-        const float ctx = 0.010f;
+        const float ctx = -0.008f;   // just aft of the dark panel = viewer side
         if (thema == 0) {                       // SONAR / radar scope
             float cy0 = -0.015f, cz0 = 0.0f;
             glColor3f(0.12f, 0.85f, 0.95f);
@@ -2619,10 +2606,9 @@ void drawCrewCabin() {
                 glEnd();
             }
             glColor3f(0.30f, 0.95f, 1.0f);
-            scText(-0.115f, -0.09f, "SONAR", GLUT_BITMAP_HELVETICA_12);
-            glColor3f(0.35f, 0.70f, 0.85f);
-            scText(-0.035f, 0.105f, "RANGE 4nm", GLUT_BITMAP_HELVETICA_10);
-            scText(-0.035f, 0.080f, "ACQ AUTO", GLUT_BITMAP_HELVETICA_10);
+            // SONAR tag drawn as vector ticks (no bitmap text on tiny screens)
+            drawLine3D(ctx, -0.115f, -0.09f, ctx, -0.060f, -0.09f);
+            drawLine3D(ctx, -0.115f, -0.10f, ctx, -0.080f, -0.10f);
         } else if (thema == 1) {                // NAV / chart plotter
             glColor3f(0.25f, 0.80f, 0.55f);
             for (int gr = 0; gr <= 4; gr++) {
@@ -2655,19 +2641,15 @@ void drawCrewCabin() {
                 glEnd();
             }
             glColor3f(0.25f, 0.95f, 0.85f);
-            scText(-0.112f, -0.10f, "NAV", GLUT_BITMAP_HELVETICA_12);
-            glColor3f(0.45f, 0.75f, 0.85f);
-            scText(0.055f, -0.10f, "PLOT", GLUT_BITMAP_HELVETICA_10);
+            // NAV tag as vector ticks
+            drawLine3D(ctx, -0.112f, -0.10f, ctx, -0.060f, -0.10f);
             glColor3f(0.20f, 0.95f, 0.45f);
             char mb[32];
-            sprintf(mb, "HDG %03.0f", fmod(sub.yaw + 360.0f, 360.0f));
-            scText(0.075f, 0.10f, mb, GLUT_BITMAP_HELVETICA_10);
+            (void)mb;
         } else {                                // ENGINE / machinery
             glColor3f(0.30f, 0.95f, 1.0f);
-            scText(-0.115f, -0.10f, "ENG", GLUT_BITMAP_HELVETICA_12);
-            glColor3f(0.35f, 0.75f, 0.85f);
-            scText(-0.02f, -0.10f, "RPM", GLUT_BITMAP_HELVETICA_10);
-            scText(0.085f, -0.10f, "TEMP", GLUT_BITMAP_HELVETICA_10);
+            // ENG tag as vector ticks
+            drawLine3D(ctx, -0.115f, -0.10f, ctx, -0.065f, -0.10f);
             for (int gi = 0; gi < 3; gi++) {
                 float gx = -0.09f + gi * 0.065f;
                 float gv;
@@ -2679,9 +2661,9 @@ void drawCrewCabin() {
                 glColor3f(0.20f, 0.90f, 0.50f);
                 drawLine3D(ctx, gx, -0.09f, ctx, gx, -0.09f + gv * 0.18f);
             }
-            glColor3f(0.35f, 0.70f, 0.80f);
-            scText(0.000f, 0.10f, "OIL OK", GLUT_BITMAP_HELVETICA_10);
             glColor3f(0.20f, 0.95f, 0.60f);
+            // status tick
+            drawLine3D(ctx, 0.000f, 0.10f, ctx, 0.045f, 0.10f);
             drawLine3D(ctx, -0.100f, -0.02f, ctx, -0.070f, -0.02f);
             drawLine3D(ctx, -0.070f, -0.02f, ctx, -0.105f, 0.035f);
         }
@@ -2715,7 +2697,7 @@ void drawCrewCabin() {
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(1.437f, -0.045f, compz);
+        glTranslatef(1.432f, -0.045f, compz);
         glRotatef(-12, 0, 0, 1);
         drawCrewScreenUI(thema);
         glPopMatrix();
@@ -2900,6 +2882,7 @@ void drawCrewCabin() {
         drawText3D(lx, ly, 0.002f, t, f);
     };
     auto drawCrewSideUI = [&](int thema) {
+        // vector-only instruments: bitmap text would render metres tall here
         if (thema == 0) {                       // DEPTH + SPEED instruments
             for (int g = 0; g < 2; g++) {
                 float gx = -0.115f + g * 0.23f;
@@ -2923,29 +2906,31 @@ void drawCrewCabin() {
             glColor3f(0.20f, 0.95f, 0.55f);
             drawLine3D(0.115f, 0.015f, 0.0f, 0.115f + sin(sA) * 0.075f, 0.015f + cos(sA) * 0.075f, 0.0f);
             glColor3f(0.30f, 0.90f, 1.0f);
-            scSideText(-0.24f, 0.125f, "DEPTH", GLUT_BITMAP_HELVETICA_12);
-            scSideText(0.075f, 0.125f, "SPEED", GLUT_BITMAP_HELVETICA_12);
+            // DEPTH / SPEED tags as vector ticks under each dial
+            drawLine3D(-0.160f, -0.055f, 0.0f, -0.070f, -0.055f, 0.0f);
+            drawLine3D(0.070f, -0.055f, 0.0f, 0.160f, -0.055f, 0.0f);
+            // digital readout bars under the needles
+            float dBars = dF * 5.0f;
+            float sBars = sF * 5.0f;
             glColor3f(0.75f, 0.85f, 0.90f);
-            char db[48];
-            sprintf(db, "%3.0f m", fabs(sub.depth));
-            scSideText(-0.150f, 0.02f, db, GLUT_BITMAP_HELVETICA_12);
-            sprintf(db, "%3.1f kn", fabs(sub.speed));
-            scSideText(0.085f, 0.02f, db, GLUT_BITMAP_HELVETICA_12);
-            glColor3f(0.40f, 0.65f, 0.75f);
-            scSideText(-0.24f, -0.105f, "DEPTH TRIM  HOLD", GLUT_BITMAP_HELVETICA_10);
-            scSideText(0.075f, -0.105f, "THROTTLE  AHEAD", GLUT_BITMAP_HELVETICA_10);
+            for (int dbi = 0; dbi < 5; dbi++) {
+                if ((float)dbi < dBars)
+                    drawLine3D(-0.175f + dbi * 0.022f, -0.085f, 0.0f,
+                               -0.160f + dbi * 0.022f, -0.085f, 0.0f);
+                if ((float)dbi < sBars)
+                    drawLine3D(0.055f + dbi * 0.022f, -0.085f, 0.0f,
+                               0.070f + dbi * 0.022f, -0.085f, 0.0f);
+            }
         } else {                                // SENSOR / SYSTEMS status
             glColor3f(0.30f, 0.90f, 1.0f);
-            scSideText(-0.28f, 0.125f, "SYSTEMS", GLUT_BITMAP_HELVETICA_12);
-            glColor3f(0.40f, 0.65f, 0.80f);
-            scSideText(-0.28f, 0.105f, "NOMINAL", GLUT_BITMAP_HELVETICA_10);
-            const char* rows[4] = { "HULL       OK",
-                                    "POWER      OK",
-                                    "BALLAST    OK",
-                                    "HYDRAULIC  OK" };
+            // SYSTEMS tag as vector ticks
+            drawLine3D(-0.28f, 0.115f, 0.0f, -0.16f, 0.115f, 0.0f);
+            // 4 status rows as vector ticks (length shimmers = OK flicker)
             glColor3f(0.45f, 0.85f, 0.95f);
             for (int r2 = 0; r2 < 4; r2++) {
-                scSideText(-0.28f, 0.065f - r2 * 0.042f, rows[r2], GLUT_BITMAP_HELVETICA_10);
+                float ry = 0.065f - r2 * 0.042f;
+                float rl = 0.10f + noise01(r2, (int)(introTimer * 0.02f), 73) * 0.06f;
+                drawLine3D(-0.28f, ry, 0.0f, -0.28f + rl, ry, 0.0f);
             }
             // animated core-temp bar
             glColor3f(0.20f, 0.95f, 0.50f);
@@ -2955,7 +2940,7 @@ void drawCrewCabin() {
                            -0.28f + tg * 0.045f, -0.09f + tv * 0.06f, 0.0f);
             }
             glColor3f(0.35f, 0.70f, 0.85f);
-            scSideText(-0.28f, -0.115f, "CORE TEMP BAR", GLUT_BITMAP_HELVETICA_10);
+            drawLine3D(-0.28f, -0.115f, 0.0f, -0.14f, -0.115f, 0.0f);
         }
     };
     auto sideConsole = [&](float cx, float cz, float dir, int thema) {
@@ -2987,7 +2972,7 @@ void drawCrewCabin() {
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(cx, 0.07f, cz + dir * 0.245f + 0.010f);
+        glTranslatef(cx, 0.07f, cz + dir * 0.245f - dir * 0.010f);
         drawCrewSideUI(thema);
         glPopMatrix();
         glEnable(GL_LIGHTING);
