@@ -3253,6 +3253,7 @@ glColor3f(0.7f, 0.7f, 0.7f);
 }
 
 void drawViewportBorder() {
+    return; // viewport frame border disabled - full unobstructed view
     if (gameState != STATE_PLAYING) return;
     if (cameraMode != CAM_INTERIOR && cameraMode != CAM_FRONT_WINDOW &&
         cameraMode != CAM_LEFT_WINDOW && cameraMode != CAM_RIGHT_WINDOW &&
