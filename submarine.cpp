@@ -2755,7 +2755,7 @@ void drawCrewCabin() {
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(1.432f, -0.045f, compz);
+        glTranslatef(1.3985f, -0.045f, compz);
         glRotatef(-12, 0, 0, 1);
         drawCrewScreenUI(thema);
         glPopMatrix();
@@ -3050,7 +3050,8 @@ void drawCrewCabin() {
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(cx, 0.07f, cz + dir * 0.245f - dir * 0.010f);
+        glTranslatef(cx, 0.07f, cz + dir * 0.22f - dir * 0.003f);
+        if (dir > 0.0f) glRotatef(180.0f, 0.0f, 1.0f, 0.0f);
         drawCrewSideUI(thema);
         glPopMatrix();
         glEnable(GL_LIGHTING);
@@ -3110,7 +3111,15 @@ void drawCrewCabin() {
     glPopMatrix();
     // navigation plan view on the aft panel, facing into the room
     glPushMatrix();
-    glTranslatef(CR_XA + 0.028f, 0.60f, -0.55f);
+    glTranslatef(CR_XA + 0.045f, 0.60f, -0.55f);
+    // opaque backlight so it reads as a lit screen against the bulkhead
+    glColor3f(0.03f, 0.11f, 0.20f);
+    glBegin(GL_QUADS);
+    glVertex3f(-0.001f, -0.075f, -0.115f);
+    glVertex3f(-0.001f, -0.075f, 0.115f);
+    glVertex3f(-0.001f, 0.075f, 0.115f);
+    glVertex3f(-0.001f, 0.075f, -0.115f);
+    glEnd();
     glColor3f(0.30f, 0.90f, 0.60f);
     for (int g = 0; g <= 3; g++) {
         float gy = -0.07f + g * 0.046f;
@@ -3136,7 +3145,7 @@ void drawCrewCabin() {
         }
     }
     glColor3f(0.40f, 0.90f, 1.0f);
-    drawText3D(CR_XA + 0.040f, 0.70f, -0.60f, "NAV PLAN", GLUT_BITMAP_HELVETICA_10);
+    drawText3D(CR_XA + 0.055f, 0.70f, -0.60f, "NAV PLAN", GLUT_BITMAP_HELVETICA_10);
     glPopMatrix();
     glEnable(GL_LIGHTING);
 
