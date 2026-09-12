@@ -582,30 +582,31 @@ void initEnvironment() {
         rocks.push_back(r);
     }
 
-    // Kelp tufts around reefs
+    // Kelp tufts: mostly spread across the whole sea floor with just a
+    // smaller thicker tuft at each reef so it never all bunches in the middle
     kelp.clear();
     for (int i = 0; i < 150; i++) {
         Kelp k;
-        int reef = rand() % 6;
-        if (rand() % 100 < 75) {
+        if (rand() % 100 < 35) {
+            int reef = rand() % 6;
             k.x = reefX[reef] + (rand() % 100 - 50) * 0.10f;
             k.z = reefZ[reef] + (rand() % 100 - 50) * 0.10f;
         } else {
-            k.x = (rand() % 600 - 300) * 0.1f;
-            k.z = (rand() % 600 - 300) * 0.1f;
+            k.x = (rand() % 800 - 400) * 0.1f; // -40 .. 40
+            k.z = (rand() % 800 - 400) * 0.1f;
         }
         k.h = 4.0f + (rand() % 100) * 0.05f;
         k.phase = (rand() % 1000) * 0.01f;
         kelp.push_back(k);
     }
 
-    // Coral
+    // Coral spread right across the sea floor
     corals.clear();
     for (int i = 0; i < 70; i++) {
         Coral c;
-        c.x = (rand() % 400 - 200) * 0.1f;
+        c.x = (rand() % 700 - 350) * 0.1f;
         c.y = -16.0f;
-        c.z = (rand() % 400 - 200) * 0.1f;
+        c.z = (rand() % 700 - 350) * 0.1f;
         c.size = 0.7f + (rand() % 100) * 0.015f;
         c.y = -15.7f;
         c.type = rand() % 3;
