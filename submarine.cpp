@@ -2402,112 +2402,26 @@ void drawCrewCabin() {
         drawCube(1.0f);
         glPopMatrix();
     }
-    // deep-sea camera feed: opaque panel on the viewer side of the bezel,
-    // then all picture content drawn slightly in FRONT of it (smaller X =
-    // closer to the crew), so nothing is hidden behind the panel.
-    float feedX = CR_XF - 0.14f;    // panel centre (viewer side of bezel)
-    float feedY = 0.55f;
-    float ovX = CR_XF - 0.155f;     // overlay plane, in front of the panel
+    // big bow window: no opaque panel here - the opening stays clear so the
+    // crew looks straight out at the live ocean through the nose glass.
+    // Only a faint glass veil keeps the "window" read with a touch of sheen.
     glDisable(GL_LIGHTING);
-    glPushMatrix();
-    glTranslatef(feedX, feedY, 0.0f);
-    glColor3f(0.03f, 0.10f, 0.20f);
-    glScalef(0.012f, 0.76f, 1.70f);
-    drawCube(1.0f);
-    glPopMatrix();
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    // vertical depth shading bands across the picture
-    for (int fb = 0; fb < 8; fb++) {
-        float fy = feedY - 0.36f + fb * 0.095f;
-        glColor4f(0.07f, 0.22f, 0.36f, 0.55f);
-        glBegin(GL_QUADS);
-        glVertex3f(ovX, fy, -0.80f);
-        glVertex3f(ovX, fy + 0.085f, -0.80f);
-        glVertex3f(ovX, fy + 0.085f, 0.80f);
-        glVertex3f(ovX, fy, 0.80f);
-        glEnd();
-    }
-    // sea-bed ridge along the bottom of the frame
-    glColor4f(0.10f, 0.30f, 0.22f, 0.90f);
-    glBegin(GL_LINE_STRIP);
-    for (int sb = -14; sb <= 14; sb++) {
-        float sz = sb * 0.06f;
-        glVertex3f(ovX, 0.245f - fabs(sin(sz * 2.6f)) * 0.05f, sz);
-    }
-    glEnd();
-    // god-ray streaks raking down through the picture
-    for (int rk = 0; rk < 5; rk++) {
-        float rz = -0.64f + rk * 0.32f;
-        glColor4f(0.30f, 0.65f, 0.90f, 0.18f);
-        glBegin(GL_POLYGON);
-        glVertex3f(ovX, 0.90f, rz);
-        glVertex3f(ovX, 0.22f, rz + 0.05f);
-        glVertex3f(ovX, 0.22f, rz + 0.08f);
-        glVertex3f(ovX, 0.90f, rz + 0.03f);
-        glEnd();
-    }
-    // rising bubbles / suspended particles (true spheres in world space)
-    for (int pb = 0; pb < 12; pb++) {
-        float pbz = -0.75f + noise01(pb, 4, 21) * 1.50f;
-        float pbv = 0.0005f * (1.0f + noise01(pb, 9, 22));
-        float pby = 0.20f + fmod(introTimer * pbv + pb * 0.083f, 1.0f) * 0.68f;
-        float pbs = 0.008f + noise01(pb, 7, 23) * 0.010f;
-        glColor4f(0.65f, 0.90f, 1.0f, 0.70f);
-        glPushMatrix();
-        glTranslatef(ovX, pby, pbz);
-        drawSphere(pbs, 6, 5);
-        glPopMatrix();
-    }
-    // simple fish silhouettes cruising through the feed
-    for (int fh = 0; fh < 3; fh++) {
-        float fz = -0.75f + fmod(introTimer * 0.00012f * (1.0f + fh * 0.3f) + fh * 0.55f, 1.6f);
-        float fy2 = 0.45f + fh * 0.12f + sin(introTimer * 0.001f + fh) * 0.03f;
-        float fs = 0.035f + fh * 0.010f;
-        glColor4f(0.08f, 0.20f, 0.30f, 0.9f);
-        glBegin(GL_TRIANGLES);
-        glVertex3f(ovX, fy2, fz + fs);
-        glVertex3f(ovX, fy2 + fs * 0.45f, fz - fs * 0.7f);
-        glVertex3f(ovX, fy2 - fs * 0.45f, fz - fs * 0.7f);
-        glEnd();
-        glBegin(GL_TRIANGLES);
-        glVertex3f(ovX, fy2, fz - fs * 0.7f);
-        glVertex3f(ovX, fy2 + fs * 0.5f, fz - fs * 1.2f);
-        glVertex3f(ovX, fy2 - fs * 0.5f, fz - fs * 1.2f);
-        glEnd();
-    }
-    // faint animated scan line + frame ticks + readout bars, all in front
-    float scan = 0.54f + sin(introTimer * 0.0016f) * 0.18f;
     glPushMatrix();
-    glTranslatef(ovX, scan, 0.0f);
-    glColor4f(0.45f, 0.90f, 1.0f, 0.30f);
-    glScalef(0.006f, 0.006f, 1.60f);
+    glTranslatef(CR_XF - 0.14f, 0.54f, 0.0f);
+    glColor4f(0.35f, 0.65f, 0.90f, 0.05f);
+    glScalef(0.012f, 0.66f, 1.66f);
     drawCube(1.0f);
     glPopMatrix();
-    for (int cn = -1; cn <= 1; cn += 2) {
-        glPushMatrix();
-        glTranslatef(ovX, 0.20f, cn * 0.78f);
-        glColor4f(0.35f, 0.85f, 1.0f, 0.60f);
-        glScalef(0.006f, 0.015f, 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-    for (int cn = -1; cn <= 1; cn += 2) {
-        glPushMatrix();
-        glTranslatef(ovX, 0.885f, cn * 0.78f);
-        glColor4f(0.35f, 0.85f, 1.0f, 0.60f);
-        glScalef(0.006f, 0.015f, 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-    for (int bar = 0; bar < 4; bar++) {
-        glPushMatrix();
-        glTranslatef(ovX, 0.26f + bar * 0.05f, 0.62f);
-        glColor4f(0.2f, 0.9f, 0.5f, 0.80f);
-        glScalef(0.006f, 0.040f, 0.05f + bar * 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
+    // faint diagonal glass reflection streak on the viewer side
+    glColor4f(0.70f, 0.90f, 1.0f, 0.06f);
+    glBegin(GL_QUADS);
+    glVertex3f(CR_XF - 0.155f, 0.25f, -0.80f);
+    glVertex3f(CR_XF - 0.155f, 0.25f, -0.55f);
+    glVertex3f(CR_XF - 0.155f, 0.87f, -0.10f);
+    glVertex3f(CR_XF - 0.155f, 0.87f, -0.35f);
+    glEnd();
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
     // EXTERNAL CAMERA - LIVE caption banner under the feed
