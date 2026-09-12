@@ -4138,8 +4138,8 @@ void updateIntro() {
     introTimer += 16.0f; // ~60fps
 
     if (gameState == STATE_INTRO) {
-        // After 5 seconds start dive
-        if (introTimer > 5000.0f) {
+        // After 2 seconds start dive
+        if (introTimer > 2000.0f) {
             gameState = STATE_DIVING;
         }
     }
