@@ -2070,8 +2070,9 @@ void drawCrewCabin() {
     glEnd();
 
     // Nose viewing glass - the band ahead of the forward bulkhead becomes a
-    // transparent bow dome so the big control screen reads as a live front view
-    // out of the bow (the underwater world is already painted by display()).
+    // transparent bow window (the underwater world is already painted by
+    // display()). The overhead sector stays solid metal so no sky/clouds
+    // leak through the ceiling - glass only where the crew looks out.
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -2093,7 +2094,13 @@ void drawCrewCabin() {
             hullNormal(yB, zB, nBy, nBz);
             hullNormal(yC, zC, nCy, nCz);
             hullNormal(yD, zD, nDy, nDz);
-            glColor4f(0.22f, 0.50f, 0.70f, 0.14f);
+            float tMid = 0.5f * (t0 + t1);
+            if (sin(tMid) > 0.45f) {
+                // solid roof overhead: opaque ceiling metal, not glass
+                glColor4f(0.30f, 0.32f, 0.35f, 1.0f);
+            } else {
+                glColor4f(0.22f, 0.50f, 0.70f, 0.14f);
+            }
             glNormal3f(0.0f, nAy, nAz); glVertex3f(x0, yA, zA);
             glNormal3f(0.0f, nBy, nBz); glVertex3f(x0, yB, zB);
             glNormal3f(0.0f, nCy, nCz); glVertex3f(x1, yC, zC);
