@@ -2594,15 +2594,15 @@ void drawCrewCabin() {
             glColor3f(0.12f, 0.85f, 0.95f);
             drawRing3D(ctx, cy0, cz0, 0.085f, 24);
             drawRing3D(ctx, cy0, cz0, 0.055f, 24);
-            drawLine3D(ctx, cy0 - 0.085f, cz0, cy0 + 0.085f, cz0);
-            drawLine3D(ctx, cy0, cz0 - 0.085f, cy0, cz0 + 0.085f);
+            drawLine3D(ctx, cy0 - 0.085f, cz0, ctx, cy0 + 0.085f, cz0);
+            drawLine3D(ctx, cy0, cz0 - 0.085f, ctx, cy0, cz0 + 0.085f);
             // rotating sweep with a fading tail
             float sa = introTimer * 0.0014f;
             for (int i = 0; i < 26; i++) {
                 float a = sa + i * 0.022f;
                 glColor4f(0.10f, 0.70f, 0.90f, 0.30f - i * 0.009f);
                 drawLine3D(ctx, cy0 + sin(a) * 0.055f, cz0 + cos(a) * 0.055f,
-                               cy0 + sin(a) * 0.085f, cz0 + cos(a) * 0.085f);
+                               ctx, cy0 + sin(a) * 0.085f, cz0 + cos(a) * 0.085f);
             }
             // echoing sonar contacts
             glColor3f(0.95f, 0.40f, 0.16f);
@@ -2627,21 +2627,21 @@ void drawCrewCabin() {
             glColor3f(0.25f, 0.80f, 0.55f);
             for (int gr = 0; gr <= 4; gr++) {
                 float gz = -0.09f + gr * 0.045f;
-                drawLine3D(ctx, -0.11f, gz, 0.11f, gz);
+                drawLine3D(ctx, -0.11f, gz, ctx, 0.11f, gz);
             }
             for (int gc = 0; gc <= 4; gc++) {
                 float gy = -0.11f + gc * 0.055f;
-                drawLine3D(ctx, gy, -0.09f, gy, 0.09f);
+                drawLine3D(ctx, gy, -0.09f, ctx, gy, 0.09f);
             }
             // own-ship marker with a heading line to the live yaw
             float sx = -0.02f + sin(introTimer * 0.0005f) * 0.02f;
             float sz = 0.02f + cos(introTimer * 0.0004f) * 0.02f;
             float hd = sub.yaw * 0.0174533f;
             glColor3f(0.20f, 0.95f, 0.45f);
-            drawLine3D(ctx, sx, sz, sx + sin(hd) * 0.05f, sz + cos(hd) * 0.05f);
-            drawLine3D(ctx, sx, sz - 0.028f, sx, sz - 0.012f);
-            drawLine3D(ctx, sx, sz, sx + 0.028f, sz);
-            drawLine3D(ctx, sx, sz, sx - 0.028f, sz);
+            drawLine3D(ctx, sx, sz, ctx, sx + sin(hd) * 0.05f, sz + cos(hd) * 0.05f);
+            drawLine3D(ctx, sx, sz - 0.028f, ctx, sx, sz - 0.012f);
+            drawLine3D(ctx, sx, sz, ctx, sx + 0.028f, sz);
+            drawLine3D(ctx, sx, sz, ctx, sx - 0.028f, sz);
             // waypoint boxes
             glColor3f(0.95f, 0.45f, 0.20f);
             for (int wp = 0; wp < 3; wp++) {
@@ -2675,15 +2675,15 @@ void drawCrewCabin() {
                 else if (gi == 1) gv = 0.40f + 0.5f * fmod(sin(introTimer * 0.0008f) + 1.0f, 1.0f);
                 else gv = 0.25f + 0.65f * noise01((int)(introTimer * 0.05f), 17, 61);
                 glColor3f(0.16f, 0.28f, 0.34f);
-                drawLine3D(ctx, gx, -0.09f, gx, 0.09f);
+                drawLine3D(ctx, gx, -0.09f, ctx, gx, 0.09f);
                 glColor3f(0.20f, 0.90f, 0.50f);
-                drawLine3D(ctx, gx, -0.09f, gx, -0.09f + gv * 0.18f);
+                drawLine3D(ctx, gx, -0.09f, ctx, gx, -0.09f + gv * 0.18f);
             }
             glColor3f(0.35f, 0.70f, 0.80f);
             scText(0.000f, 0.10f, "OIL OK", GLUT_BITMAP_HELVETICA_10);
             glColor3f(0.20f, 0.95f, 0.60f);
-            drawLine3D(ctx, -0.100f, -0.02f, -0.070f, -0.02f);
-            drawLine3D(ctx, -0.070f, -0.02f, -0.105f, 0.035f);
+            drawLine3D(ctx, -0.100f, -0.02f, ctx, -0.070f, -0.02f);
+            drawLine3D(ctx, -0.070f, -0.02f, ctx, -0.105f, 0.035f);
         }
     };
     auto frontConsole = [&](float compz, float compw, int thema) {
