@@ -720,7 +720,7 @@ void initEnvironment() {
 // DRAW SUBMARINE
 // ============================================================
 void drawSubmarineBody() {
-    float hullR = 1.0f;
+    float hullR = 1.35f;
     float hullDark[3] = { 0.19f, 0.20f, 0.22f };
     float hullSide[3] = { 0.22f, 0.23f, 0.25f };
     float hullTopC[3] = { 0.26f, 0.27f, 0.29f };
@@ -743,12 +743,12 @@ void drawSubmarineBody() {
     glTranslatef(2.85f, 0, 0);
     if (!useCamo) glColor3fv(hullDark);
     else glColor3f(1,1,1);
-    glScalef(0.92f, 0.86f, 0.82f);
+    glScalef(1.0f, 0.98f, 0.96f);
     drawSphere(hullR, 24, 18);
     glPopMatrix();
 
     glPushMatrix();
-    glTranslatef(0.8f, 0.95f, 0);
+    glTranslatef(0.8f, hullR - 0.20f, 0);
     glColor3fv(hullTopC);
     glScalef(3.4f, 0.20f, 0.45f);
     drawSphere(0.5f, 24, 12);
@@ -767,23 +767,23 @@ void drawSubmarineBody() {
     glPopMatrix();
     if (useCamo) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
     glPushMatrix();
-    glTranslatef(0.0f, -0.42f, 0);
+    glTranslatef(0.0f, -hullR + 0.28f, 0);
     glColor3fv(hullRed);
-    glScalef(6.8f, 0.22f, 1.02f);
+    glScalef(6.8f, 0.24f, 1.12f);
     drawSphere(0.52f, 24, 12);
     glPopMatrix();
     glPushMatrix();
-    glTranslatef(0.0f, -0.52f, 0);
+    glTranslatef(0.0f, -hullR * 0.88f, 0);
     glColor3fv(hullRed);
-    glScalef(6.2f, 0.08f, 0.92f);
+    glScalef(6.2f, 0.08f, 1.00f);
     drawCube(1.0f);
     glPopMatrix();
-    glPushMatrix(); glTranslatef(3.55f, -0.32f, 0); glColor3fv(hullRed); glScalef(0.55f, 0.28f, 0.55f); drawSphere(0.42f, 16, 12); glPopMatrix();
-    glPushMatrix(); glTranslatef(0.35f, 0.98f, 0); glColor3f(0.08f,0.09f,0.10f); glScalef(4.85f, 0.06f, 0.22f); drawCube(1.0f); glPopMatrix();
-    glPushMatrix(); glTranslatef(0.35f, 1.02f, 0); glColor3f(0.04f,0.05f,0.06f); glScalef(4.85f, 0.015f, 0.16f); drawCube(1.0f); glPopMatrix();
+    glPushMatrix(); glTranslatef(3.55f, -hullR * 0.55f, 0); glColor3fv(hullRed); glScalef(0.55f, 0.28f, 0.55f); drawSphere(0.42f, 16, 12); glPopMatrix();
+    glPushMatrix(); glTranslatef(0.35f, hullR - 0.06f, 0); glColor3f(0.08f,0.09f,0.10f); glScalef(4.85f, 0.06f, 0.22f); drawCube(1.0f); glPopMatrix();
+    glPushMatrix(); glTranslatef(0.35f, hullR - 0.02f, 0); glColor3f(0.04f,0.05f,0.06f); glScalef(4.85f, 0.015f, 0.16f); drawCube(1.0f); glPopMatrix();
     glDisable(GL_LIGHTING);
-    for(int k=0;k<4;k++){ glPushMatrix(); glTranslatef(1.75f- k*0.22f, 0.12f, 0.99f); glColor3f(0.92f,0.92f,0.92f); glScalef(0.28f,0.025f,0.01f); drawCube(1.0f); glPopMatrix(); glPushMatrix(); glTranslatef(1.75f- k*0.22f, 0.12f,-0.99f); glScalef(0.28f,0.025f,0.01f); drawCube(1.0f); glPopMatrix(); }
-    for(int k=0;k<5;k++){ glPushMatrix(); glTranslatef(-1.15f- k*0.20f, 0.42f, 0.98f); glColor3f(0.92f,0.92f,0.92f); glScalef(0.18f,0.02f,0.01f); drawCube(1.0f); glPopMatrix(); glPushMatrix(); glTranslatef(-1.15f- k*0.20f, 0.42f,-0.98f); glScalef(0.18f,0.02f,0.01f); drawCube(1.0f); glPopMatrix(); }
+    for(int k=0;k<4;k++){ glPushMatrix(); glTranslatef(1.75f- k*0.22f, 0.12f, hullR - 0.15f); glColor3f(0.92f,0.92f,0.92f); glScalef(0.28f,0.025f,0.01f); drawCube(1.0f); glPopMatrix(); glPushMatrix(); glTranslatef(1.75f- k*0.22f, 0.12f,-(hullR - 0.15f)); glScalef(0.28f,0.025f,0.01f); drawCube(1.0f); glPopMatrix(); }
+    for(int k=0;k<5;k++){ glPushMatrix(); glTranslatef(-1.15f- k*0.20f, 0.42f, hullR - 0.15f); glColor3f(0.92f,0.92f,0.92f); glScalef(0.18f,0.02f,0.01f); drawCube(1.0f); glPopMatrix(); glPushMatrix(); glTranslatef(-1.15f- k*0.20f, 0.42f,-(hullR - 0.15f)); glScalef(0.18f,0.02f,0.01f); drawCube(1.0f); glPopMatrix(); }
     glEnable(GL_LIGHTING);
 
     glColor3f(0.10f, 0.10f, 0.11f);
@@ -809,7 +809,7 @@ void drawSubmarineBody() {
     glPopMatrix();
 
     for (int s = -1; s <= 1; s += 2) {
-        float zside = s * 0.97f;
+        float zside = s * hullR;
         glPushMatrix();
         glTranslatef(-0.2f, 0.05f, zside);
         if (s < 0) glRotatef(180, 0, 1, 0);
@@ -1007,11 +1007,11 @@ void setupSubHeadlight() {
     glLightfv(GL_LIGHT2, GL_AMBIENT, amb2);
     glLightfv(GL_LIGHT2, GL_DIFFUSE, diff2);
     glLightfv(GL_LIGHT2, GL_SPECULAR, spec2);
-    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 28.0f);
-    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 10.0f);
-    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.4f);
-    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.05f);
-    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.008f);
+    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 38.0f);
+    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 3.0f);
+    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.2f);
+    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.02f);
+    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.003f);
 }
 
 void drawHeadlightBeam(float lx, float ly, float lz, float len, float farR) {
@@ -1020,7 +1020,7 @@ void drawHeadlightBeam(float lx, float ly, float lz, float len, float farR) {
     glRotatef(90, 0, 1, 0);
     GLUquadric* q = gluNewQuadric();
     gluQuadricNormals(q, GLU_SMOOTH);
-    gluCylinder(q, 0.12f, farR, len, 14, 1);
+    gluCylinder(q, 0.18f, farR, len, 14, 1);
     gluDeleteQuadric(q);
     glPopMatrix();
 }
@@ -1030,8 +1030,8 @@ void drawSubmarineHeadlights() {
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glColor4f(1.0f, 0.45f, 0.20f, 0.14f);
-    drawHeadlightBeam(3.88f, 0.02f, 0.0f, 9.0f, 2.0f);
+    glColor4f(1.0f, 0.45f, 0.20f, 0.10f);
+    drawHeadlightBeam(3.88f, 0.02f, 0.0f, 14.0f, 9.0f);
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
 }
@@ -1134,23 +1134,24 @@ void drawSun() {
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
 
-    // Sun glitter path on the water toward the camera
+    // Faint distant sun shimmer only, well away from the boat: the old code
+    // painted a broad orange-brown fan right in front of the submarine on
+    // the start scene, which read as mud floating in the sea.
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    glColor4f(1.0f, 0.94f, 0.80f, 0.06f * diveBlend);
     glBegin(GL_QUADS);
-    glColor4f(1.0f, 0.62f, 0.32f, 0.20f * diveBlend);
     glVertex3f(-38, 0.15f, -40);
     glVertex3f(-28, 0.15f, -40);
-    glVertex3f(-15, 0.15f, 10);
-    glVertex3f(-25, 0.15f, 10);
+    glVertex3f(-22, 0.15f, -25);
+    glVertex3f(-30, 0.15f, -25);
     glEnd();
-    // wider soft glitter fan around it
-    glColor4f(1.0f, 0.48f, 0.22f, 0.10f * diveBlend);
+    glColor4f(1.0f, 0.90f, 0.72f, 0.04f * diveBlend);
     glBegin(GL_QUADS);
     glVertex3f(-44, 0.15f, -40);
     glVertex3f(-22, 0.15f, -40);
-    glVertex3f(-8, 0.15f, 10);
-    glVertex3f(-32, 0.15f, 10);
+    glVertex3f(-18, 0.15f, -25);
+    glVertex3f(-34, 0.15f, -25);
     glEnd();
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
@@ -1300,7 +1301,7 @@ void drawDeckCrewSilhouettes() {
     float deckX[] = { -0.6f, -0.9f, -1.2f, -1.5f, -1.8f };
     for (int i = 0; i < 5; i++) {
         glPushMatrix();
-        glTranslatef(deckX[i], 1.02f, 0.02f);
+        glTranslatef(deckX[i], 1.38f, 0.02f);
         drawSphere(0.07f, 6, 5); // head
         glTranslatef(0, -0.16f, 0);
         glScalef(0.09f, 0.26f, 0.09f);
@@ -1310,7 +1311,7 @@ void drawDeckCrewSilhouettes() {
     // 2 figures on top of sail
     for (int i = 0; i < 2; i++) {
         glPushMatrix();
-        glTranslatef(0.35f + i * 0.25f, 2.35f, 0);
+        glTranslatef(0.35f + i * 0.25f, 2.15f, 0);
         drawSphere(0.06f, 6, 5);
         glTranslatef(0, -0.14f, 0);
         glScalef(0.08f, 0.22f, 0.08f);
