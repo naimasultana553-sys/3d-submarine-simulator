@@ -89,6 +89,14 @@ const char* missionNames[] = {
     "OBSERVE MARINE LIFE THROUGH WINDOWS",
     "RETURN SAFELY TOWARD THE SURFACE"
 };
+// short labels that fit inside the small HUD info box
+const char* missionShort[] = {
+    "DESCEND",
+    "EXPLORE",
+    "NAVIGATE",
+    "OBSERVE",
+    "RETURN"
+};
 
 // Intro / Dive animation
 float introTimer = 0.0f;
@@ -3143,19 +3151,19 @@ void drawHUD() {
     // Top-left info panel
     glColor4f(0.0f, 0.0f, 0.0f, 0.5f);
     glBegin(GL_QUADS);
-    glVertex2f(60, windowHeight - 270);
-    glVertex2f(270, windowHeight - 270);
-    glVertex2f(270, windowHeight - 420);
-    glVertex2f(60, windowHeight - 420);
+    glVertex2f(60, windowHeight - 282);
+    glVertex2f(250, windowHeight - 282);
+    glVertex2f(250, windowHeight - 414);
+    glVertex2f(60, windowHeight - 414);
     glEnd();
 
     // Border
     glColor4f(0.0f, 0.8f, 0.8f, 0.8f);
     glBegin(GL_LINE_LOOP);
-    glVertex2f(60, windowHeight - 270);
-    glVertex2f(270, windowHeight - 270);
-    glVertex2f(270, windowHeight - 420);
-    glVertex2f(60, windowHeight - 420);
+    glVertex2f(60, windowHeight - 282);
+    glVertex2f(250, windowHeight - 282);
+    glVertex2f(250, windowHeight - 414);
+    glVertex2f(60, windowHeight - 414);
     glEnd();
 
     // Info text
@@ -3177,7 +3185,7 @@ void drawHUD() {
     sprintf(buf, "CAMERA: %s", cameraNames[cameraMode]);
     drawText(70, windowHeight - 382, buf, GLUT_BITMAP_HELVETICA_12);
 
-    sprintf(buf, "MISSION: %s", missionNames[currentMission]);
+    sprintf(buf, "MISSION: %s", missionShort[currentMission]);
     drawText(70, windowHeight - 404, buf, GLUT_BITMAP_HELVETICA_12);
 
     // Bottom center - mission timer
