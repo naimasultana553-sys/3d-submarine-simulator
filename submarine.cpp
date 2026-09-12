@@ -507,16 +507,16 @@ void initEnvironment() {
         if (f.type == 3) f.type = 1;
         f.animPhase = (rand() % 1000) * 0.01f;
         switch (rand() % 7) {
-        case 0: f.r = 1.00f; f.g = 0.68f; f.b = 0.12f; break;
-        case 1: f.r = 0.98f; f.g = 0.42f; f.b = 0.55f; break;
-        case 2: f.r = 0.18f; f.g = 0.20f; f.b = 0.24f; break;
-        case 3: f.r = 0.95f; f.g = 0.35f; f.b = 0.18f; break;
-        case 4: f.r = 0.62f; f.g = 0.56f; f.b = 0.78f; break;
-        case 5: f.r = 0.30f; f.g = 0.62f; f.b = 0.92f; break;
-        default: f.r = 0.96f; f.g = 0.82f; f.b = 0.22f; break;
+        case 0: f.r = 0.96f; f.g = 0.56f; f.b = 0.12f; break; // reef orange
+        case 1: f.r = 0.88f; f.g = 0.20f; f.b = 0.28f; break; // scarlet
+        case 2: f.r = 0.16f; f.g = 0.42f; f.b = 0.88f; break; // royal blue
+        case 3: f.r = 0.14f; f.g = 0.72f; f.b = 0.82f; break; // turquoise
+        case 4: f.r = 0.16f; f.g = 0.64f; f.b = 0.34f; break; // emerald
+        case 5: f.r = 0.70f; f.g = 0.32f; f.b = 0.86f; break; // violet
+        default: f.r = 0.98f; f.g = 0.78f; f.b = 0.20f; break; // golden
         }
         if (f.type == 1) { f.size = 0.55f + (rand() % 100) * 0.004f; }
-        if (f.type == 2) { f.r = 0.75f; f.g = 0.45f; f.b = 0.95f; f.y -= 2.0f; }
+        if (f.type == 2) { f.r = 0.28f; f.g = 0.78f; f.b = 0.92f; f.y -= 2.0f; } // cyan glow
         fishes.push_back(f);
     }
 
@@ -1473,44 +1473,107 @@ void drawFish() {
         float tailWag = sin(t * 10 + f.animPhase) * 15.0f;
 
         if (f.type == 0 || f.type == 1) {
-            glDisable(GL_LIGHTING);
+            // Realistic fish: tapered fusiform body, forked tail,
+            // dorsal + pectoral fins and a real eye on each side.
             float s = f.size;
-            glColor3f(f.r, f.g, f.b);
-            // Body
-            glScalef(1.0f, 0.6f, 0.5f);
-            drawSphere(s, 8, 6);
+            // darker shade for the fins
+            float dr = f.r * 0.55f, dg = f.g * 0.55f, db = f.b * 0.55f;
 
-            // Tail
             glPushMatrix();
-            glTranslatef(-s * 1.2f, 0, 0);
+            glScalef(s, s, s);
+
+            // ---- Body: overlapping spheres tapered from head to peduncle ----
+            // (x offset along the fish, cross-section radius at that point)
+            const float bx[7] = { 0.72f, 0.48f, 0.20f, -0.08f, -0.36f, -0.62f, -0.85f };
+            const float br[7] = { 0.26f, 0.46f, 0.56f, 0.58f, 0.50f, 0.36f, 0.19f };
+            glPushMatrix();
+            glScalef(1.0f, 0.62f, 0.50f);
+            for (int k = 0; k < 7; k++) {
+                glPushMatrix();
+                glTranslatef(bx[k], 0, 0);
+                glColor3f(f.r, f.g, f.b);
+                drawSphere(br[k], 14, 9);
+                glPopMatrix();
+            }
+            glPopMatrix();
+
+            // ---- Forked tail (same side-to-side wag) ----
+            glPushMatrix();
+            glTranslatef(-1.02f, 0, 0);
             glRotatef(tailWag, 0, 1, 0);
-            glColor3f(f.r * 0.8f, f.g * 0.8f, f.b * 0.8f);
-            glScalef(0.6f, 0.8f, 0.3f);
-            drawCone(s * 0.5f, s * 0.6f, 6);
+            glColor3f(dr, dg, db);
+            glBegin(GL_TRIANGLES);
+            // upper lobe
+            glNormal3f(0, 0, 1);
+            glVertex3f(0.02f, -0.02f, 0);
+            glVertex3f(-0.62f, 0.46f, 0);
+            glVertex3f(-0.20f, 0.00f, 0);
+            // lower lobe
+            glVertex3f(0.02f, 0.02f, 0);
+            glVertex3f(-0.62f, -0.46f, 0);
+            glVertex3f(-0.20f, 0.00f, 0);
+            // mirrored side so the fin reads from both directions
+            glNormal3f(0, 0, -1);
+            glVertex3f(0.02f, -0.02f, 0);
+            glVertex3f(-0.20f, 0.00f, 0);
+            glVertex3f(-0.62f, 0.46f, 0);
+            glVertex3f(0.02f, 0.02f, 0);
+            glVertex3f(-0.20f, 0.00f, 0);
+            glVertex3f(-0.62f, -0.46f, 0);
+            glEnd();
             glPopMatrix();
 
-            glPushMatrix();
-            glTranslatef(s * 0.6f, s * 0.15f, s * 0.2f);
-            glColor3f(1, 1, 1);
-            drawSphere(s * 0.15f, 6, 4);
-            glColor3f(0, 0, 0);
-            drawSphere(s * 0.08f, 4, 4);
+            // ---- Dorsal fin ----
+            for (int zOff = -1; zOff <= 1; zOff++) {
+                if (zOff == 0) continue;
+                glColor3f(dr, dg, db);
+                glBegin(GL_TRIANGLES);
+                glNormal3f(0, 1, 0);
+                glVertex3f(-0.58f, 0.26f, zOff * 0.02f);
+                glVertex3f(0.32f, 0.30f, zOff * 0.02f);
+                glVertex3f(-0.14f, 0.64f, zOff * 0.02f);
+                glEnd();
+            }
+
+            // ---- Pectoral fins (one on each side) ----
+            for (int side = -1; side <= 1; side += 2) {
+                glPushMatrix();
+                glTranslatef(0.20f, -0.04f, side * 0.22f);
+                glRotatef(side * 30.0f, 0, 0, 1);
+                glColor3f(dr, dg, db);
+                glScalef(0.55f, 0.12f, 0.30f);
+                drawSphere(0.30f, 6, 4);
+                glPopMatrix();
+            }
+
+            // ---- Eyes (both sides) ----
+            for (int side = -1; side <= 1; side += 2) {
+                glPushMatrix();
+                glTranslatef(0.46f, 0.20f, side * 0.30f);
+                glColor3f(0.95f, 0.97f, 1.0f);
+                drawSphere(0.10f, 6, 4);
+                glTranslatef(0.03f, 0.01f, side * 0.05f);
+                glColor3f(0.06f, 0.06f, 0.08f);
+                drawSphere(0.05f, 6, 4);
+                glPopMatrix();
+            }
+
             glPopMatrix();
-            glEnable(GL_LIGHTING);
         } else if (f.type == 2) {
             // Jellyfish
             float s = f.size;
             float pulse = sin(t * 3 + f.animPhase) * 0.15f;
 
             // Bell/dome
-            glColor4f(f.r, f.g, f.b, 0.6f);
+            glDisable(GL_LIGHTING);
+            glColor4f(f.r, f.g, f.b, 0.55f);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glScalef(1.0f + pulse, 0.7f, 1.0f + pulse);
             drawSphere(s, 10, 8);
 
             // Tentacles
-            glColor4f(f.r * 0.8f, f.g * 0.8f, f.b, 0.4f);
+            glColor4f(f.r * 0.7f, f.g * 0.8f, f.b, 0.35f);
             for (int t2 = 0; t2 < 6; t2++) {
                 float angle = t2 * 60.0f * DEG_TO_RAD;
                 glPushMatrix();
@@ -1521,6 +1584,7 @@ void drawFish() {
                 glPopMatrix();
             }
             glDisable(GL_BLEND);
+            glEnable(GL_LIGHTING);
         }
         glPopMatrix();
     }
@@ -1677,7 +1741,7 @@ void drawLightRays() {
     // Fade rays as the boat goes very deep
     float depthFade = 1.0f - fabs(sub.depth - 8.0f) / 25.0f;
     if (depthFade < 0.15f) depthFade = 0.15f;
-    float a = 0.04f * strength * depthFade;
+    float a = 0.032f * strength * depthFade;
 
     glDisable(GL_LIGHTING);
     glDisable(GL_DEPTH_TEST);
@@ -1691,10 +1755,10 @@ void drawLightRays() {
         float botW = 2.6f + (i % 4) * 0.6f;
         float sway = sin(t * 0.9f + i) * 1.5f;
         glBegin(GL_QUADS);
-        glColor4f(0.45f, 0.75f, 0.95f, 0.0f);
+        glColor4f(0.30f, 0.60f, 0.92f, 0.0f);
         glVertex3f(rx - topW, 0.5f, rz);
         glVertex3f(rx + topW, 0.5f, rz);
-        glColor4f(0.45f, 0.75f, 0.95f, a);
+        glColor4f(0.30f, 0.60f, 0.92f, a);
         glVertex3f(rx + botW + sway, -16.0f, rz);
         glVertex3f(rx - botW + sway, -16.0f, rz);
         glEnd();
@@ -3348,15 +3412,15 @@ void setupLighting() {
     // Bright day ambient on surface, dark blue ambient when deep
     float diveBlend = 1.0f - diveTransition;
     GLfloat globalAmbient[] = {
-        0.45f * diveBlend + 0.22f,
-        0.45f * diveBlend + 0.25f,
-        0.50f * diveBlend + 0.30f, 1.0f };
+        0.45f * diveBlend + 0.18f,
+        0.45f * diveBlend + 0.20f,
+        0.50f * diveBlend + 0.24f, 1.0f };
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
 
     // Key sun from FRONT-LEFT-TOP (camera side +Z) so visible hull is lit
     GLfloat sunPos[] = { -30.0f, 28.0f, 35.0f, 0.0f };
     GLfloat sunAmb[] = { 0.35f * diveBlend + 0.15f, 0.33f * diveBlend + 0.15f, 0.30f * diveBlend + 0.16f, 1.0f };
-    GLfloat sunDiff[] = { 1.15f * diveBlend + 0.35f, 1.05f * diveBlend + 0.35f, 0.95f * diveBlend + 0.35f, 1.0f };
+    GLfloat sunDiff[] = { 1.15f * diveBlend + 0.24f, 1.05f * diveBlend + 0.24f, 0.95f * diveBlend + 0.26f, 1.0f };
     GLfloat sunSpec[] = { 0.7f * diveBlend, 0.7f * diveBlend, 0.65f * diveBlend, 1.0f };
 
     glLightfv(GL_LIGHT0, GL_POSITION, sunPos);
@@ -3368,7 +3432,7 @@ void setupLighting() {
     float uw = diveTransition;
     GLfloat subPos[] = { sub.x, sub.y + 0.5f, sub.z, 1.0f };
     GLfloat subAmb[] = { 0.05f + 0.14f * uw, 0.05f + 0.15f * uw, 0.08f + 0.18f * uw, 1.0f };
-    GLfloat subDiff[] = { 0.15f + 0.60f * uw, 0.15f + 0.65f * uw, 0.25f + 0.70f * uw, 1.0f };
+    GLfloat subDiff[] = { 0.15f + 0.52f * uw, 0.15f + 0.58f * uw, 0.25f + 0.68f * uw, 1.0f };
 
     glLightfv(GL_LIGHT1, GL_POSITION, subPos);
     glLightfv(GL_LIGHT1, GL_AMBIENT, subAmb);
@@ -3391,10 +3455,10 @@ void setupFog() {
 
     glEnable(GL_FOG);
     glFogi(GL_FOG_MODE, GL_EXP2);
-    // Natural deep-sea blue, not black: shallow teal -> deep navy
-    GLfloat fogColor[] = { 0.10f * diveBlend, 0.45f * diveBlend + 0.02f, 0.70f * diveBlend + 0.04f, 1.0f };
+    // Natural deep-sea navy: steep, murky falloff, matches clear colour
+    GLfloat fogColor[] = { 0.05f * diveBlend, 0.34f * diveBlend + 0.014f, 0.62f * diveBlend + 0.03f, 1.0f };
     glFogfv(GL_FOG_COLOR, fogColor);
-    glFogf(GL_FOG_DENSITY, 0.015f * diveBlend);
+    glFogf(GL_FOG_DENSITY, 0.022f * diveBlend);
     glHint(GL_FOG_HINT, GL_DONT_CARE);
 }
 
