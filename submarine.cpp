@@ -503,8 +503,9 @@ void initEnvironment() {
         if (sizeClass < 4) f.size = 0.18f + (rand() % 100) * 0.0015f;
         else if (sizeClass < 8) f.size = 0.35f + (rand() % 100) * 0.0025f;
         else f.size = 0.60f + (rand() % 100) * 0.004f;
-        f.type = rand() % 4;
-        if (f.type == 3) f.type = 1;
+        // weighted types: ~30% jellyfish, rest small + large fish
+        int rType = rand() % 10;
+        f.type = (rType < 3) ? 2 : ((rType < 8) ? (rand() % 2) : 1);
         f.animPhase = (rand() % 1000) * 0.01f;
         switch (rand() % 7) {
         case 0: f.r = 0.96f; f.g = 0.56f; f.b = 0.12f; break; // reef orange
@@ -1461,6 +1462,12 @@ bool insideCrewCabin(float x, float y, float z) {
 void drawFish() {
     float t = introTimer * 0.001f;
 
+    // Keep fish colours rich and saturated (no bright white specular wash)
+    GLfloat fishSpec[] = { 0.10f, 0.12f, 0.16f, 1.0f };
+    GLfloat fishShine[] = { 6.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, fishSpec);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, fishShine);
+
     for (size_t i = 0; i < fishes.size(); i++) {
         Fish& f = fishes[i];
         if (insideCrewCabin(f.x, f.y, f.z)) continue;
@@ -1560,34 +1567,96 @@ void drawFish() {
 
             glPopMatrix();
         } else if (f.type == 2) {
-            // Jellyfish
+            // Real jellyfish: translucent pulsing dome, glowing core,
+            // frilly oral arms and long trailing stinging tentacles.
             float s = f.size;
             float pulse = sin(t * 3 + f.animPhase) * 0.15f;
+            float bellR = 0.95f * (1.0f + pulse * 0.10f);
+            float bellH = 0.80f * (1.0f - pulse * 0.12f);
 
-            // Bell/dome
             glDisable(GL_LIGHTING);
-            glColor4f(f.r, f.g, f.b, 0.55f);
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glScalef(1.0f + pulse, 0.7f, 1.0f + pulse);
-            drawSphere(s, 10, 8);
+            glPushMatrix();
+            glScalef(s, s, s);
 
-            // Tentacles
-            glColor4f(f.r * 0.7f, f.g * 0.8f, f.b, 0.35f);
-            for (int t2 = 0; t2 < 6; t2++) {
-                float angle = t2 * 60.0f * DEG_TO_RAD;
+            // ---- translucent bell dome ----
+            const int LON = 16;
+            glColor4f(0.30f, 0.70f, 0.95f, 0.35f);
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex3f(0, bellH, 0);
+            for (int n = 0; n <= LON; n++) {
+                float th = (float)n / LON * 2.0f * PI;
+                float r = sin(12.0f * DEG_TO_RAD) * bellR;
+                float y = cos(12.0f * DEG_TO_RAD) * bellH;
+                glVertex3f(cos(th) * r, y, sin(th) * r);
+            }
+            glEnd();
+            for (int k = 0; k < 6; k++) {
+                float lat0 = (12.0f + k * 13.0f) * DEG_TO_RAD;
+                float lat1 = (12.0f + (k + 1) * 13.0f) * DEG_TO_RAD;
+                glBegin(GL_QUAD_STRIP);
+                for (int n = 0; n <= LON; n++) {
+                    float th = (float)n / LON * 2.0f * PI;
+                    float a0 = cos(th) * sin(lat0) * bellR, b0 = cos(lat0) * bellH;
+                    float a1 = cos(th) * sin(lat1) * bellR, b1 = cos(lat1) * bellH;
+                    glVertex3f(a0, b0, sin(th) * sin(lat0) * bellR);
+                    glVertex3f(a1, b1, sin(th) * sin(lat1) * bellR);
+                }
+                glEnd();
+            }
+
+            // ---- faint glowing core inside the bell ----
+            glPushMatrix();
+            glTranslatef(0, bellH * 0.35f, 0);
+            glColor4f(0.60f, 0.85f, 1.0f, 0.40f);
+            glScalef(0.55f, 0.35f, 0.55f);
+            drawSphere(1.0f, 8, 6);
+            glPopMatrix();
+
+            // ---- oral arms: short frilly skirt hanging from the rim ----
+            for (int k = 0; k < 4; k++) {
+                float ang = k * 90.0f * DEG_TO_RAD;
+                float swayA = sin(t * 1.6f + k + f.animPhase) * 8.0f;
                 glPushMatrix();
-                glTranslatef(cos(angle) * s * 0.3f, -s * 0.3f, sin(angle) * s * 0.3f);
-                float tentSway = sin(t * 2 + t2) * 10.0f;
-                glRotatef(tentSway, 0, 0, 1);
-                drawCylinder(0.01f * s, s * 0.8f, 4);
+                glTranslatef(cos(ang) * 0.10f, -0.22f, sin(ang) * 0.10f);
+                glRotatef(swayA, cos(ang), 0, sin(ang));
+                glColor4f(0.30f, 0.60f, 0.90f, 0.38f);
+                glScalef(0.09f, 0.24f, 0.09f);
+                drawSphere(1.0f, 6, 4);
                 glPopMatrix();
             }
+
+            // ---- long trailing stinging tentacles around the rim ----
+            for (int k = 0; k < 18; k++) {
+                float th = (float)k / 18.0f * 2.0f * PI;
+                float lenT = 0.7f + (k % 5) * 0.14f;
+                float tipX = cos(th) * bellR * 0.97f;
+                float tipZ = sin(th) * bellR * 0.97f;
+                float sway1 = sin(t * 2.2f + k) * 0.05f;
+                float sway2 = sin(t * 1.7f + k * 1.3f) * 0.08f;
+                glBegin(GL_LINE_STRIP);
+                glColor4f(0.40f, 0.75f, 0.95f, 0.08f);
+                glVertex3f(tipX, 0.05f, tipZ);
+                glColor4f(0.45f, 0.80f, 1.0f, 0.30f);
+                glVertex3f(tipX + sway1, -lenT * 0.45f, tipZ + sway1);
+                glColor4f(0.40f, 0.75f, 0.95f, 0.10f);
+                glVertex3f(tipX + sway1 + sway2, -lenT, tipZ - sway2);
+                glEnd();
+            }
+
+            glPopMatrix();
             glDisable(GL_BLEND);
             glEnable(GL_LIGHTING);
         }
         glPopMatrix();
     }
+
+    // restore neutral material so the rest of the scene is not glossy
+    GLfloat noSpec[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    GLfloat noShine[] = { 0.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, noSpec);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, noShine);
 }
 
 void drawSharks() {
@@ -1596,41 +1665,126 @@ void drawSharks() {
         float sx = s.cx + cos(s.angle) * s.radius;
         float sz = s.cz + sin(s.angle) * s.radius;
         if (insideCrewCabin(sx, s.cy, sz)) continue;
-        glPushMatrix();
-        glTranslatef(sx, s.cy, sz);
-        glRotatef(-(s.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
         float tailWag = sin(introTimer * 0.004f + i * 2.0f) * 12.0f;
-        glColor3f(0.45f, 0.52f, 0.58f);
-        glScalef(s.size * 1.6f, s.size * 0.42f, s.size * 0.5f);
-        drawSphere(1.0f, 12, 8);
-        glPopMatrix();
         glPushMatrix();
         glTranslatef(sx, s.cy, sz);
         glRotatef(-(s.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
-        glColor3f(0.42f, 0.49f, 0.55f);
+        glScalef(s.size, s.size, s.size);
+
+        // deep steel blue-grey — no more pale / white-looking sharks
+        float topR = 0.30f, topG = 0.38f, topB = 0.48f;
+        float finR = 0.24f, finG = 0.30f, finB = 0.38f;
+        GLfloat sharkSpec[] = { 0.10f, 0.12f, 0.16f, 1.0f };
+        GLfloat sharkShine[] = { 6.0f };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, sharkSpec);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, sharkShine);
+
+        // ---- tapered fusiform body (head +x) ----
+        const float bx[9] = { 1.18f, 1.00f, 0.78f, 0.50f, 0.20f, -0.10f, -0.42f, -0.74f, -1.02f };
+        const float br[9] = { 0.03f, 0.10f, 0.24f, 0.36f, 0.44f, 0.42f, 0.34f, 0.24f, 0.13f };
         glPushMatrix();
-        glTranslatef(-s.size * 1.7f, s.size * 0.1f, 0);
+        glScalef(1.0f, 0.52f, 0.42f);
+        for (int k = 0; k < 9; k++) {
+            glPushMatrix();
+            glTranslatef(bx[k], 0, 0);
+            glColor3f(topR, topG, topB);
+            drawSphere(br[k], 14, 9);
+            glPopMatrix();
+        }
+        // pointed snout
+        glColor3f(topR, topG, topB);
+        glTranslatef(1.06f, 0, 0); drawSphere(0.15f, 8, 6);
+        glTranslatef(0.14f, 0, 0); drawSphere(0.09f, 8, 6);
+        glTranslatef(0.12f, 0, 0); drawSphere(0.035f, 8, 6);
+        glPopMatrix();
+
+        // ---- crescent tail (tall upper lobe, short lower) ----
+        glPushMatrix();
+        glTranslatef(-1.12f, 0, 0);
         glRotatef(tailWag, 0, 1, 0);
-        glScalef(s.size * 0.5f, s.size * 0.55f, s.size * 0.08f);
-        drawCube(1.0f);
+        glColor3f(finR, finG, finB);
+        glBegin(GL_TRIANGLES);
+        glNormal3f(0, 0, 1);
+        glVertex3f(0.05f, -0.03f, 0);
+        glVertex3f(-0.30f, 0.60f, 0);
+        glVertex3f(-0.34f, 0.10f, 0);
+        glVertex3f(0.05f, 0.03f, 0);
+        glVertex3f(-0.34f, 0.10f, 0);
+        glVertex3f(-0.30f, -0.25f, 0);
+        glNormal3f(0, 0, -1);
+        glVertex3f(0.05f, -0.03f, 0);
+        glVertex3f(-0.34f, 0.10f, 0);
+        glVertex3f(-0.30f, 0.60f, 0);
+        glVertex3f(0.05f, 0.03f, 0);
+        glVertex3f(-0.30f, -0.25f, 0);
+        glVertex3f(-0.34f, 0.10f, 0);
+        glEnd();
         glPopMatrix();
-        glPushMatrix();
-        glTranslatef(-s.size * 0.1f, s.size * 0.55f, 0);
-        glScalef(s.size * 0.45f, s.size * 0.55f, s.size * 0.08f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(s.size * 0.35f, -s.size * 0.25f, s.size * 0.35f);
-        glRotatef(25, 1, 0, 0);
-        glScalef(s.size * 0.55f, s.size * 0.08f, s.size * 0.3f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(s.size * 0.35f, -s.size * 0.25f, -s.size * 0.35f);
-        glRotatef(-25, 1, 0, 0);
-        glScalef(s.size * 0.55f, s.size * 0.08f, s.size * 0.3f);
-        drawCube(1.0f);
-        glPopMatrix();
+
+        // ---- tall raked dorsal fin ----
+        for (int zOff = -1; zOff <= 1; zOff++) {
+            if (zOff == 0) continue;
+            glColor3f(finR, finG, finB);
+            glBegin(GL_TRIANGLES);
+            glNormal3f(0, 1, 0);
+            glVertex3f(-0.20f, 0.34f, zOff * 0.03f);
+            glVertex3f(0.42f, 0.36f, zOff * 0.03f);
+            glVertex3f(0.00f, 1.05f, zOff * 0.03f);
+            glEnd();
+        }
+
+        // ---- small second dorsal near the tail ----
+        for (int zOff = -1; zOff <= 1; zOff++) {
+            if (zOff == 0) continue;
+            glColor3f(finR, finG, finB);
+            glBegin(GL_TRIANGLES);
+            glNormal3f(0, 1, 0);
+            glVertex3f(-0.78f, 0.24f, zOff * 0.02f);
+            glVertex3f(-0.52f, 0.26f, zOff * 0.02f);
+            glVertex3f(-0.66f, 0.52f, zOff * 0.02f);
+            glEnd();
+        }
+
+        // ---- long pectoral fins spread on the sides ----
+        for (int side = -1; side <= 1; side += 2) {
+            glColor3f(finR, finG, finB);
+            glBegin(GL_TRIANGLES);
+            glNormal3f(0, 0, (float)side);
+            glVertex3f(0.42f, -0.14f, side * 0.24f);
+            glVertex3f(-0.15f, -0.28f, side * 0.42f);
+            glVertex3f(0.52f, -0.30f, side * 0.30f);
+            glEnd();
+            glBegin(GL_TRIANGLES);
+            glNormal3f(0, 0, (float)side);
+            glVertex3f(0.42f, -0.14f, side * 0.24f);
+            glVertex3f(0.52f, -0.30f, side * 0.30f);
+            glVertex3f(0.10f, -0.34f, side * 0.12f);
+            glEnd();
+        }
+
+        // ---- small dark eyes low on the head ----
+        for (int side = -1; side <= 1; side += 2) {
+            glPushMatrix();
+            glTranslatef(0.62f, 0.14f, side * 0.26f);
+            glColor3f(0.05f, 0.06f, 0.08f);
+            drawSphere(0.06f, 6, 4);
+            glPopMatrix();
+        }
+
+        // ---- three dark gill slits on each side ----
+        for (int side = -1; side <= 1; side += 2) {
+            for (int g = 0; g < 3; g++) {
+                float gx = 0.26f + g * 0.13f;
+                glColor3f(0.10f, 0.13f, 0.17f);
+                glBegin(GL_QUADS);
+                glVertex3f(gx, 0.10f, side * 0.20f - 0.01f);
+                glVertex3f(gx, 0.24f, side * 0.20f - 0.01f);
+                glVertex3f(gx + 0.04f, 0.23f, side * 0.20f - 0.01f);
+                glVertex3f(gx + 0.04f, 0.09f, side * 0.20f - 0.01f);
+                glEnd();
+            }
+        }
+
         glPopMatrix();
     }
 }
