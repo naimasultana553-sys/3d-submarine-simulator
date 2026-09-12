@@ -1083,98 +1083,149 @@ void drawSky() {
 }
 
 void drawSun() {
-    // Low sunset sun on left like ref, not high noon
+    // Realistic low sun: hard bright core, layered corona and a warm
+    // amber haze hugging the horizon wherever it dips.
     float diveBlend = 1.0f - diveTransition;
     if (diveBlend <= 0) return;
 
     glDisable(GL_LIGHTING);
     glDisable(GL_DEPTH_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+
+    float t = introTimer * 0.001f;
+    float puls = 1.0f + sin(t * 0.7f) * 0.03f;
+
+    // hard bright core
+    glColor3f(1.0f * diveBlend, 0.96f * diveBlend, 0.85f * diveBlend);
     glPushMatrix();
     glTranslatef(-165.0f, 22.0f, -180.0f);
-    glColor3f(1.0f * diveBlend, 0.94f * diveBlend, 0.82f * diveBlend);
-    drawSphere(9.5f, 24, 18);
+    drawSphere(9.5f * puls, 24, 18);
     glPopMatrix();
+
     if (texPuff) {
         glEnable(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, texPuff);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-        glColor4f(1.0f, 0.82f, 0.52f, 0.32f * diveBlend);
-        drawBillboard(-165.0f, 22.0f, -180.0f, 32.0f, 32.0f);
-        glColor4f(1.0f, 0.62f, 0.32f, 0.14f * diveBlend);
-        drawBillboard(-165.0f, 22.0f, -180.0f, 62.0f, 62.0f);
+        // layered corona: tight warm, wide orange, huge faint
+        glColor4f(1.0f, 0.90f, 0.62f, 0.55f * diveBlend);
+        drawBillboard(-165.0f, 22.0f, -180.0f, 26.0f, 26.0f);
+        glColor4f(1.0f, 0.75f, 0.42f, 0.34f * diveBlend);
+        drawBillboard(-165.0f, 22.0f, -180.0f, 48.0f, 48.0f);
+        glColor4f(1.0f, 0.60f, 0.30f, 0.16f * diveBlend);
+        drawBillboard(-165.0f, 22.0f, -180.0f, 88.0f, 88.0f);
+        // low amber haze hugging the horizon around the sun
+        glColor4f(1.0f, 0.55f, 0.28f, 0.10f * diveBlend);
+        drawBillboard(-165.0f, 18.0f, -180.0f, 150.0f, 34.0f);
         glBindTexture(GL_TEXTURE_2D, 0);
         glDisable(GL_TEXTURE_2D);
-        glDisable(GL_BLEND);
     }
+    glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
-    // Sun glitter path on water toward camera
+
+    // Sun glitter path on the water toward the camera
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
     glBegin(GL_QUADS);
-    glColor4f(1.0f, 0.6f, 0.3f, 0.18f * diveBlend);
+    glColor4f(1.0f, 0.62f, 0.32f, 0.20f * diveBlend);
     glVertex3f(-38, 0.15f, -40);
     glVertex3f(-28, 0.15f, -40);
     glVertex3f(-15, 0.15f, 10);
     glVertex3f(-25, 0.15f, 10);
+    glEnd();
+    // wider soft glitter fan around it
+    glColor4f(1.0f, 0.48f, 0.22f, 0.10f * diveBlend);
+    glBegin(GL_QUADS);
+    glVertex3f(-44, 0.15f, -40);
+    glVertex3f(-22, 0.15f, -40);
+    glVertex3f(-8, 0.15f, 10);
+    glVertex3f(-32, 0.15f, 10);
     glEnd();
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
 }
 
 void drawDistantHills() {
-    // Low brown-green coastline on horizon like 1st ref
+    // Real coastline: layered ridgelines with vertical shading and warm
+    // sunlight on the left, blue-green atmospheric haze further back.
     float diveBlend = 1.0f - diveTransition;
     if (diveBlend <= 0) return;
     glDisable(GL_LIGHTING);
     glPushMatrix();
-    glColor3f(0.55f * diveBlend + 0.1f, 0.52f * diveBlend + 0.1f, 0.62f * diveBlend + 0.08f);
+
+    // farthest hazy ridge (drawn first so nearer hills overlap it)
+    glBegin(GL_TRIANGLE_FAN);
+    glVertex3f(-110, 0, -80);
+    for (int i = 0; i <= 20; i++) {
+        float t = i / 20.0f;
+        float hx = -110 + t * 260.0f;
+        float hy = 6.4f + sin(t * 11.0f) * 1.9f + sin(t * 31.0f) * 0.8f + sin(t * 73.0f) * 0.3f;
+        glColor3f(0.18f * diveBlend + 0.05f, 0.28f * diveBlend + 0.05f, 0.34f * diveBlend + 0.06f);
+        glVertex3f(hx, hy, -80);
+    }
+    glEnd();
+
+    // left long ridge, warm sunlit side
     glBegin(GL_TRIANGLE_FAN);
     glVertex3f(-92, 0, -68);
     for (int i = 0; i <= 18; i++) {
         float t = i / 18.0f;
         float hx = -92 + t * 184.0f;
-        float hy = 4.8f + sin(t * 13.0f) * 1.4f + sin(t * 29.0f) * 0.7f + sin(t*53.0f)*0.35f;
+        float hy = 4.8f + sin(t * 13.0f) * 1.4f + sin(t * 29.0f) * 0.7f + sin(t * 53.0f) * 0.35f;
+        float grad = (hy + 6.0f) / 15.0f; if (grad > 1) grad = 1; if (grad < 0) grad = 0;
+        float warm = 1.0f - (hx + 92.0f) / 184.0f; if (warm < 0) warm = 0; if (warm > 1) warm = 1;
+        glColor3f(
+            (0.34f * diveBlend + 0.06f) * (0.72f + 0.35f * grad) + warm * 0.07f,
+            (0.30f * diveBlend + 0.05f) * (0.74f + 0.22f * grad) + warm * 0.04f,
+            (0.16f * diveBlend + 0.03f) * (0.80f + 0.18f * grad));
         glVertex3f(hx, hy, -68);
     }
     glEnd();
+
+    // nearer blue-green ridge
     glBegin(GL_TRIANGLE_FAN);
     glVertex3f(-82, 0, -58);
     for (int i = 0; i <= 16; i++) {
         float t = i / 16.0f;
         float hx = -82 + t * 62.0f;
-        float hy = 3.4f + sin(t * 7.0f) * 1.1f + sin(t * 19.0f) * 0.55f + sin(t*37.0f)*0.25f;
-        float shade = 0.85f + 0.15f * sin(t * 31.0f);
-        glColor3f((0.30f * diveBlend + 0.05f) * shade,
-                  (0.26f * diveBlend + 0.04f) * shade,
-                  (0.15f * diveBlend + 0.02f) * shade);
+        float hy = 3.4f + sin(t * 7.0f) * 1.1f + sin(t * 19.0f) * 0.55f + sin(t * 37.0f) * 0.25f;
+        float grad = (hy + 4.0f) / 11.0f; if (grad > 1) grad = 1; if (grad < 0) grad = 0;
+        glColor3f(
+            (0.30f * diveBlend + 0.05f) * (0.70f + 0.34f * grad),
+            (0.26f * diveBlend + 0.04f) * (0.72f + 0.24f * grad),
+            (0.14f * diveBlend + 0.02f) * (0.78f + 0.22f * grad));
         glVertex3f(hx, hy, -55);
     }
     glEnd();
+
+    // near green ridge on the right
     glBegin(GL_TRIANGLE_FAN);
     glVertex3f(6, 0, -60);
     for (int i = 0; i <= 14; i++) {
         float t = i / 14.0f;
         float hx = 6 + t * 78.0f;
-        float hy = 3.0f + sin(t * 9.0f) * 0.85f + sin(t * 23.0f) * 0.40f + sin(t*43.0f)*0.20f;
-        float shade = 0.85f + 0.15f * sin(t * 27.0f + 2.0f);
-        glColor3f((0.22f * diveBlend + 0.04f) * shade,
-                  (0.30f * diveBlend + 0.04f) * shade,
-                  (0.22f * diveBlend + 0.03f) * shade);
+        float hy = 3.0f + sin(t * 9.0f) * 0.85f + sin(t * 23.0f) * 0.40f + sin(t * 43.0f) * 0.20f;
+        float grad = (hy + 3.5f) / 10.0f; if (grad > 1) grad = 1; if (grad < 0) grad = 0;
+        glColor3f(
+            (0.20f * diveBlend + 0.04f) * (0.70f + 0.34f * grad),
+            (0.30f * diveBlend + 0.04f) * (0.74f + 0.22f * grad),
+            (0.18f * diveBlend + 0.02f) * (0.78f + 0.20f * grad));
         glVertex3f(hx, hy, -57);
     }
     glEnd();
+
     // Vegetation speckle dots on near hills
     glPointSize(2.0f);
     glBegin(GL_POINTS);
-    for (int i = 0; i < 120; i++) {
+    for (int i = 0; i < 140; i++) {
         float t = (i * 0.731f) - (int)(i * 0.731f);
         float hx = -78 + t * 120.0f;
-        float hh = 0.4f + ((i * 37) % 100) / 100.0f * 1.6f;
-        glColor3f(0.16f * diveBlend + 0.03f, 0.28f * diveBlend + 0.03f, 0.12f * diveBlend + 0.02f);
+        float hh = 0.4f + ((i * 37) % 100) / 100.0f * 1.8f;
+        float shade = 0.7f + 0.3f * ((i * 13) % 100) / 100.0f;
+        glColor3f((0.16f * diveBlend + 0.03f) * shade, (0.28f * diveBlend + 0.03f) * shade, (0.12f * diveBlend + 0.02f) * shade);
         glVertex3f(hx, hh, -54.5f);
     }
     glEnd();
+    glPointSize(1.0f);
     glPopMatrix();
     glEnable(GL_LIGHTING);
 }
@@ -1289,6 +1340,63 @@ void drawClouds() {
     }
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+}
+
+void drawBirds() {
+    // Small seabird flocks gliding and flapping over the water
+    float diveBlend = 1.0f - diveTransition;
+    if (diveBlend <= 0) return;
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    float t = introTimer * 0.001f;
+
+    for (int f = 0; f < 4; f++) {
+        float bx = -95.0f + f * 52.0f + sin(t * 0.05f + f * 2.1f) * 7.0f;
+        float by = 30.0f + f * 12.0f;
+        float bz = -72.0f - f * 16.0f;
+        for (int b = 0; b < 6; b++) {
+            float offx = (b - 2) * 1.5f + sin(t * 0.6f + b + f) * 0.5f;
+            float offy = sin(t * 0.8f + b * 1.7f + f) * 0.5f;
+            float offz = (b % 2) * 1.4f;
+            float flapY = sin(t * 9.0f + b * 1.3f + f * 2.0f) * 0.55f + 0.22f;
+            float ws = 0.95f + (b % 3) * 0.14f;
+            float heading = (b % 2) ? -7.0f : 7.0f;
+            glPushMatrix();
+            glTranslatef(bx + offx, by + offy, bz + offz);
+            glRotatef(heading, 0, 1, 0);
+            glColor4f(0.08f, 0.10f, 0.12f, 0.85f * diveBlend);
+            // left wing (flaps up and down around the body axis)
+            glBegin(GL_TRIANGLES);
+            glVertex3f(0, 0, 0);
+            glVertex3f(-ws, flapY, -ws * 0.42f);
+            glVertex3f(-ws * 0.28f, flapY * 0.6f, -ws * 0.95f);
+            glEnd();
+            // right wing
+            glBegin(GL_TRIANGLES);
+            glVertex3f(0, 0, 0);
+            glVertex3f(ws * 0.28f, flapY * 0.6f, -ws * 0.95f);
+            glVertex3f(ws, flapY, -ws * 0.42f);
+            glEnd();
+            // tail
+            glBegin(GL_TRIANGLES);
+            glVertex3f(0, 0, 0);
+            glVertex3f(-ws * 0.26f, 0.05f, -ws * 0.30f);
+            glVertex3f(ws * 0.26f, 0.05f, -ws * 0.30f);
+            glEnd();
+            // body
+            glBegin(GL_TRIANGLES);
+            glVertex3f(0, 0, 0);
+            glVertex3f(-ws * 0.28f, -0.03f, ws * 0.55f);
+            glVertex3f(ws * 0.28f, -0.03f, ws * 0.55f);
+            glEnd();
+            glPopMatrix();
+        }
+    }
+
+    glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
 }
 
@@ -4160,6 +4268,7 @@ void display() {
         drawSun();
         drawDistantHills();
         drawClouds();
+        drawBirds();
         drawTrees();
     }
 
