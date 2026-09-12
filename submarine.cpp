@@ -2399,8 +2399,17 @@ void drawCrewCabin() {
         glPopMatrix();
         glEnable(GL_LIGHTING);
     }
-    // bow window is frameless: no bezel bars, just the open glass with the
-    // live ocean beyond (the lower wall and header beam bound it top/bottom)
+    // main front-view screen: slim metal bezel frame around the bow window
+    for (int bd = 0; bd < 4; bd++) {
+        glPushMatrix();
+        if (bd == 0) { glTranslatef(CR_XF - 0.13f, 0.93f, 0.0f);   glScalef(0.06f, 0.10f, 1.90f); }
+        if (bd == 1) { glTranslatef(CR_XF - 0.13f, 0.135f, 0.0f);  glScalef(0.06f, 0.13f, 1.90f); }
+        if (bd == 2) { glTranslatef(CR_XF - 0.13f, 0.54f, -0.90f); glScalef(0.06f, 0.68f, 0.12f); }
+        if (bd == 3) { glTranslatef(CR_XF - 0.13f, 0.54f,  0.90f); glScalef(0.06f, 0.68f, 0.12f); }
+        glColor3f(0.10f, 0.12f, 0.14f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
     // big bow window: no opaque panel here - the opening stays clear so the
     // crew looks straight out at the live ocean through the nose glass.
     // Only a faint glass veil keeps the "window" read with a touch of sheen.
