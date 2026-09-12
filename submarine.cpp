@@ -2162,6 +2162,11 @@ void drawLightRays() {
     float depthFade = 1.0f - fabs(sub.depth - 8.0f) / 25.0f;
     if (depthFade < 0.15f) depthFade = 0.15f;
     float a = 0.032f * strength * depthFade;
+    // The crew room's front bow window is the live external camera feed, so a
+    // subtle shimmer is kept but the additive haze is heavily damped there.
+    // For every other camera the full god-ray beam stays as it was.
+    float camScale = (cameraMode == CAM_CONTROL_SCREEN) ? 0.30f : 1.0f;
+    a *= camScale;
 
     glDisable(GL_LIGHTING);
     glDisable(GL_DEPTH_TEST);
@@ -2185,7 +2190,7 @@ void drawLightRays() {
     }
     // Bright surface sheet seen from below
     glBegin(GL_QUADS);
-    glColor4f(0.35f, 0.65f, 0.9f, 0.35f * strength);
+    glColor4f(0.35f, 0.65f, 0.9f, 0.35f * strength * camScale);
     glVertex3f(-40, 0.4f, -40);
     glVertex3f(40, 0.4f, -40);
     glVertex3f(40, 0.4f, 40);
@@ -2736,6 +2741,13 @@ void drawCrewCabin() {
         glPushMatrix();
         glTranslatef(px, py, pz);
         if (side < 0.0f) glRotatef(180.0f, 0, 1, 0);
+        // Solid metal mount collar: the hull cut-out is a coarse quad grid, so
+        // its jagged rim can reach ~0.31 from the window centre. This plate
+        // covers the whole rough opening and makes the wall one continuous
+        // ash-gray metal surface - the ocean can now only show through the
+        // circular glass pane inside the rim, never through broken edges.
+        glColor3f(0.31f, 0.33f, 0.36f);
+        drawDisk(0.075f, 0.34f, 36);
         // outer rim ring + glass seat
         glColor3f(0.26f, 0.28f, 0.31f);
         drawTorus(0.070f, 0.118f, 10, 20);
@@ -3883,7 +3895,13 @@ void setupFog() {
     // Natural deep-sea navy: steep, murky falloff, matches clear colour
     GLfloat fogColor[] = { 0.05f * diveBlend, 0.34f * diveBlend + 0.014f, 0.62f * diveBlend + 0.03f, 1.0f };
     glFogfv(GL_FOG_COLOR, fogColor);
-    glFogf(GL_FOG_DENSITY, 0.022f * diveBlend);
+    float fogDensity = 0.022f * diveBlend;
+    // Inside the crew control room the big front bow window is the sub's live
+    // external-camera feed, so it must stay sharp: lift most of the murk there
+    // (the horizon/seabed/rocks still keep a gentle depth haze, but no milky
+    // fog wash over the screen). All outside cameras keep the full deep fog.
+    if (cameraMode == CAM_CONTROL_SCREEN) fogDensity *= 0.45f;
+    glFogf(GL_FOG_DENSITY, fogDensity);
     glHint(GL_FOG_HINT, GL_DONT_CARE);
 }
 
