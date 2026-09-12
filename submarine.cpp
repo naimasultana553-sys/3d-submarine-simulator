@@ -1976,8 +1976,10 @@ void drawInterior() {
 // DRAW CREW CABIN (distinct quarters behind the bridge)
 // ============================================================
 void drawCrewCabin() {
-    GLfloat matSpec[] = { 0.50f, 0.52f, 0.56f, 1.0f };
-    GLfloat matShine[] = { 32.0f };
+    // matte interior metal: zero specular so the lamps don't paint soft
+    // white smear lobes across the curved ceiling (room stays lit by diffuse)
+    GLfloat matSpec[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    GLfloat matShine[] = { 1.0f };
     glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
     glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShine);
     glEnable(GL_COLOR_MATERIAL);
