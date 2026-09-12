@@ -2814,16 +2814,19 @@ void drawCrewCabin() {
     }
 
     for (int s = -1; s <= 1; s += 2) {
+        // Overhead service tiers: the duct runs, pipes and cable tray sit well
+        // above the porthole row, tucked under the curved upper hull, so these
+        // horizontal runs NEVER cross or hide the circular windows below.
         // ventilation ducts
         glPushMatrix();
-        glTranslatef(0.0f, 0.62f, s * 0.55f);
+        glTranslatef(0.0f, 1.04f, s * 0.55f);
         glColor3f(0.34f, 0.36f, 0.39f);
         glScalef(2.30f, 0.06f, 0.14f);
         drawCube(1.0f);
         glPopMatrix();
         for (int g = 0; g < 9; g++) {
             glPushMatrix();
-            glTranslatef(-1.05f + g * 0.26f, 0.585f, s * 0.55f);
+            glTranslatef(-1.05f + g * 0.26f, 1.005f, s * 0.55f);
             glColor3f(0.12f, 0.13f, 0.14f);
             glScalef(0.18f, 0.012f, 0.03f);
             drawCube(1.0f);
@@ -2831,20 +2834,20 @@ void drawCrewCabin() {
         }
         // pipe runs along the curved hull
         glPushMatrix();
-        glTranslatef(0.0f, 0.74f, s * 0.82f);
+        glTranslatef(0.0f, 1.12f, s * 0.88f);
         glColor3f(0.30f, 0.32f, 0.35f);
         glScalef(2.90f, 0.045f, 0.045f);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(0.0f, 0.66f, s * 0.90f);
+        glTranslatef(0.0f, 0.98f, s * 0.94f);
         glColor3f(0.20f, 0.21f, 0.23f);
         glScalef(2.90f, 0.028f, 0.028f);
         drawCube(1.0f);
         glPopMatrix();
         // cable tray on the opposite side
         glPushMatrix();
-        glTranslatef(0.0f, 0.74f, -s * 0.66f);
+        glTranslatef(0.0f, 1.08f, -s * 0.66f);
         glColor3f(0.16f, 0.17f, 0.19f);
         glScalef(2.70f, 0.03f, 0.06f);
         drawCube(1.0f);
@@ -2876,8 +2879,8 @@ void drawCrewCabin() {
         glPopMatrix();
         glPopMatrix();
     };
-    valve(-0.42f, 0.74f, -0.82f);
-    valve( 0.30f, 0.74f,  0.82f);
+    valve(-0.42f, 1.12f, -0.88f);
+    valve( 0.30f, 1.12f,  0.88f);
 
     // ------------------------------------------------------------------
     // 5. FORWARD BULKHEAD + BIG CONTROL SCREEN + SIDE DISPLAYS
