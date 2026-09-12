@@ -284,6 +284,15 @@ static float smoothNoise(float x, float y, int seed) {
     float c = noise01(xi, yi + 1, seed), d = noise01(xi + 1, yi + 1, seed);
     return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
 }
+
+// Rolling sea-bed hills so the floor looks like a real underwater terrain.
+static float seaFloorY(float x, float z) {
+    return -16.0f
+        + sin(x * 0.11f) * cos(z * 0.09f) * 2.4f
+        + sin((x + z) * 0.055f) * 1.3f
+        + sin(x * 0.31f) * cos(z * 0.27f) * 0.35f
+        + sin(x * 0.9f + z * 0.8f) * 0.12f;
+}
 static GLuint uploadTexture(int w, int h, unsigned char* px, bool rgba, bool repeat) {
     GLuint t; glGenTextures(1, &t);
     glBindTexture(GL_TEXTURE_2D, t);
@@ -517,7 +526,20 @@ void initEnvironment() {
         default: f.r = 0.98f; f.g = 0.78f; f.b = 0.20f; break; // golden
         }
         if (f.type == 1) { f.size = 0.55f + (rand() % 100) * 0.004f; }
-        if (f.type == 2) { f.r = 0.28f; f.g = 0.78f; f.b = 0.92f; f.y -= 2.0f; } // cyan glow
+        if (f.type == 2) {
+            // bright glowing jellyfish colours: pink, violet, cyan,
+            // orange, lime-green, sky blue
+            int jc = rand() % 6;
+            switch (jc) {
+            case 0: f.r = 1.00f; f.g = 0.42f; f.b = 0.85f; break; // neon pink
+            case 1: f.r = 0.85f; f.g = 0.38f; f.b = 1.00f; break; // violet
+            case 2: f.r = 0.35f; f.g = 0.90f; f.b = 1.00f; break; // bright cyan
+            case 3: f.r = 1.00f; f.g = 0.60f; f.b = 0.25f; break; // orange
+            case 4: f.r = 0.45f; f.g = 1.00f; f.b = 0.65f; break; // lime-green
+            default: f.r = 0.35f; f.g = 0.68f; f.b = 1.00f; break; // sky blue
+            }
+            f.y -= 2.0f;
+        }
         fishes.push_back(f);
     }
 
@@ -1331,14 +1353,13 @@ void drawOceanSurface() {
     glEnd();
     if (waterTex) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
 
-    // Natural seabed: textured rippled sand, properly lit with normals,
-    // plus drifting caustic light patches
-    float floorY = -16.0f;
+    // Rolling sea-bed hills: real underwater terrain with slope lighting,
+    // drifting caustic patches that fade with depth, and a floor that
+    // darkens to deep algal blue the deeper the boat goes.
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
     bool sandTex = (texSand != 0);
     if (sandTex) { glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texSand); }
-    glColor3f(1.0f, 0.96f, 0.88f);
     glBegin(GL_QUADS);
     for (int i = -gridSize; i < gridSize; i++) {
         for (int j = -gridSize; j < gridSize; j++) {
@@ -1346,20 +1367,36 @@ void drawOceanSurface() {
             float z0 = j * gridStep;
             float x1 = (i + 1) * gridStep;
             float z1 = (j + 1) * gridStep;
-            float h = sin(x0 * 0.45f) * cos(z0 * 0.38f) * 0.45f + sin((x0 + z0) * 0.15f) * 0.25f;
+            float hA = seaFloorY(x0, z0);
+            float hB = seaFloorY(x1, z0);
+            float hC = seaFloorY(x1, z1);
+            float hD = seaFloorY(x0, z1);
+
+            // true slope normal computed from the quad's edges
+            float nx = hA - hB;
+            float nz = hA - hD;
+            float ny = gridStep;
+            float nl = sqrt(nx * nx + ny * ny + nz * nz);
+            nx /= nl; ny /= nl; nz /= nl;
+
             float ca = sin(x0 * 0.8f + introTimer * 0.0012f) * cos(z0 * 0.7f - introTimer * 0.001f);
             ca = ca * ca * (1.0f - diveTransition * 0.7f); // caustics fade with depth
-            float sandTone = 0.9f + h * 0.25f;
-            glColor3f((0.72f * sandTone + ca * 0.28f), (0.64f * sandTone + ca * 0.24f), (0.47f * sandTone + ca * 0.15f));
-            glNormal3f(0, 1, 0);
+            float sandTone = 0.9f + (hA + 16.0f) * 0.08f;
+            // bright sand near the surface -> dark algal blue at depth
+            float deep = diveTransition;
+            float rr = (0.72f * sandTone + ca * 0.28f) * (1.0f - 0.45f * deep) + 0.05f * deep;
+            float gg = (0.64f * sandTone + ca * 0.24f) * (1.0f - 0.45f * deep) + 0.15f * deep;
+            float bb = (0.47f * sandTone + ca * 0.15f) * (1.0f - 0.45f * deep) + 0.22f * deep;
+            glColor3f(rr, gg, bb);
+            glNormal3f(nx, ny, nz);
             if (sandTex) glTexCoord2f(x0 * 0.08f, z0 * 0.08f);
-            glVertex3f(x0, floorY + h, z0);
+            glVertex3f(x0, hA, z0);
             if (sandTex) glTexCoord2f(x1 * 0.08f, z0 * 0.08f);
-            glVertex3f(x1, floorY + sin(x1 * 0.5f) * cos(z0 * 0.4f) * 0.3f, z0);
+            glVertex3f(x1, hB, z0);
             if (sandTex) glTexCoord2f(x1 * 0.08f, z1 * 0.08f);
-            glVertex3f(x1, floorY + sin(x1 * 0.5f) * cos(z1 * 0.4f) * 0.3f, z1);
+            glVertex3f(x1, hC, z1);
             if (sandTex) glTexCoord2f(x0 * 0.08f, z1 * 0.08f);
-            glVertex3f(x0, floorY + h, z1);
+            glVertex3f(x0, hD, z1);
         }
     }
     glEnd();
@@ -1389,7 +1426,7 @@ void drawSeaweed() {
     for (size_t i = 0; i < seaweeds.size(); i++) {
         glPushMatrix();
         float sway = sin(introTimer * 0.003f + seaweeds[i].phase) * 0.2f;
-        glTranslatef(seaweeds[i].x, -16.0f, seaweeds[i].z);
+        glTranslatef(seaweeds[i].x, seaFloorY(seaweeds[i].x, seaweeds[i].z), seaweeds[i].z);
 
         int segments = 8;
         float segH = seaweeds[i].height / segments;
@@ -1407,7 +1444,7 @@ void drawSeaweed() {
 void drawRocks() {
     for (size_t i = 0; i < rocks.size(); i++) {
         glPushMatrix();
-        glTranslatef(rocks[i].x, rocks[i].y, rocks[i].z);
+        glTranslatef(rocks[i].x, seaFloorY(rocks[i].x, rocks[i].z) - rocks[i].scaleY * 0.25f, rocks[i].z);
         glScalef(rocks[i].scaleX, rocks[i].scaleY, rocks[i].scaleZ);
         glColor3f(rocks[i].r, rocks[i].g, rocks[i].b);
         drawSphere(1.0f, 8, 6);
@@ -1418,7 +1455,7 @@ void drawRocks() {
 void drawCoral() {
     for (size_t i = 0; i < corals.size(); i++) {
         glPushMatrix();
-        glTranslatef(corals[i].x, corals[i].y, corals[i].z);
+        glTranslatef(corals[i].x, seaFloorY(corals[i].x, corals[i].z), corals[i].z);
 
         glColor3f(corals[i].r, corals[i].g, corals[i].b);
         float s = corals[i].size;
@@ -1580,9 +1617,9 @@ void drawFish() {
             glPushMatrix();
             glScalef(s, s, s);
 
-            // ---- translucent bell dome ----
+            // ---- translucent glowing bell dome (each jelly its own colour) ----
             const int LON = 16;
-            glColor4f(0.30f, 0.70f, 0.95f, 0.35f);
+            glColor4f(f.r, f.g, f.b, 0.45f);
             glBegin(GL_TRIANGLE_FAN);
             glVertex3f(0, bellH, 0);
             for (int n = 0; n <= LON; n++) {
@@ -1606,10 +1643,10 @@ void drawFish() {
                 glEnd();
             }
 
-            // ---- faint glowing core inside the bell ----
+            // ---- bright glowing core inside the bell ----
             glPushMatrix();
             glTranslatef(0, bellH * 0.35f, 0);
-            glColor4f(0.60f, 0.85f, 1.0f, 0.40f);
+            glColor4f(f.r * 0.7f + 0.3f, f.g * 0.7f + 0.3f, f.b * 0.7f + 0.3f, 0.55f);
             glScalef(0.55f, 0.35f, 0.55f);
             drawSphere(1.0f, 8, 6);
             glPopMatrix();
@@ -1621,7 +1658,7 @@ void drawFish() {
                 glPushMatrix();
                 glTranslatef(cos(ang) * 0.10f, -0.22f, sin(ang) * 0.10f);
                 glRotatef(swayA, cos(ang), 0, sin(ang));
-                glColor4f(0.30f, 0.60f, 0.90f, 0.38f);
+                glColor4f(f.r * 0.8f, f.g * 0.8f, f.b * 0.8f, 0.45f);
                 glScalef(0.09f, 0.24f, 0.09f);
                 drawSphere(1.0f, 6, 4);
                 glPopMatrix();
@@ -1636,14 +1673,23 @@ void drawFish() {
                 float sway1 = sin(t * 2.2f + k) * 0.05f;
                 float sway2 = sin(t * 1.7f + k * 1.3f) * 0.08f;
                 glBegin(GL_LINE_STRIP);
-                glColor4f(0.40f, 0.75f, 0.95f, 0.08f);
+                glColor4f(f.r, f.g, f.b, 0.10f);
                 glVertex3f(tipX, 0.05f, tipZ);
-                glColor4f(0.45f, 0.80f, 1.0f, 0.30f);
+                glColor4f(f.r, f.g, f.b, 0.35f);
                 glVertex3f(tipX + sway1, -lenT * 0.45f, tipZ + sway1);
-                glColor4f(0.40f, 0.75f, 0.95f, 0.10f);
+                glColor4f(f.r * 0.8f, f.g * 0.8f, f.b * 0.8f, 0.12f);
                 glVertex3f(tipX + sway1 + sway2, -lenT, tipZ - sway2);
                 glEnd();
             }
+
+            // ---- additive halo: a soft bright blob around the whole jelly ----
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+            glPushMatrix();
+            glColor4f(f.r, f.g, f.b, 0.20f);
+            glScalef(1.4f, 0.95f, 1.4f);
+            drawSphere(1.0f, 12, 8);
+            glPopMatrix();
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
             glPopMatrix();
             glDisable(GL_BLEND);
@@ -1817,30 +1863,58 @@ void drawKelp() {
     for (size_t i = 0; i < kelp.size(); i++) {
         Kelp& k = kelp[i];
         float lean = sin(t + k.phase) * 4.0f;
+        float baseY = seaFloorY(k.x, k.z);
         glPushMatrix();
-        glTranslatef(k.x, -16.0f, k.z);
+        glTranslatef(k.x, baseY, k.z);
         glRotatef(lean, 0, 0, 1);
-        glColor3f(0.20f, 0.30f, 0.06f);
-        drawCylinder(0.09f, k.h, 6);
-        for (int L = 0; L < 3; L++) {
-            float ly = k.h * (0.30f + 0.22f * L);
-            for (int s = -1; s <= 1; s += 2) {
+
+        // Tall leafy stem: big broad blades fan out alternately like a
+        // giant sea palm, swaying with the current.
+        glColor3f(0.16f, 0.26f, 0.05f);
+        drawCylinder(0.10f, k.h, 8);
+
+        for (int L = 0; L < 6; L++) {
+            float ly = k.h * (0.35f + L * 0.10f);
+            float swayL = sin(t * 2.0f + k.phase + L) * 6.0f;
+            if (L % 2 == 0) {
+                // one giant broad leaf
                 glPushMatrix();
                 glTranslatef(0, ly, 0);
-                glRotatef(s * (32.0f + L * 5.0f), 0, 0, 1);
-                glRotatef((L * 47 + s * 30), 0, 1, 0);
-                if ((L + s) % 2 == 0) glColor3f(0.42f, 0.46f, 0.09f);
-                else glColor3f(0.28f, 0.38f, 0.07f);
-                glScalef(1.0f, 1.0f, 0.25f);
-                drawCone(0.08f, 0.7f + L * 0.1f, 5);
+                glRotatef(40.0f + swayL, 0, 0, 1);
+                glRotatef(L * 60.0f, 0, 1, 0);
+                glPushMatrix();
+                glScalef(1.7f * (1.0f - L * 0.05f), 0.5f, 0.16f);
+                glColor3f(0.30f, 0.42f, 0.08f);
+                drawSphere(0.75f, 8, 5);
                 glPopMatrix();
+                glPopMatrix();
+            } else {
+                // pair of broad leaves opposite each other
+                for (int s = -1; s <= 1; s += 2) {
+                    glPushMatrix();
+                    glTranslatef(0, ly, 0);
+                    glRotatef(s * (38.0f - L * 2.0f) + swayL * s, 0, 0, 1);
+                    glRotatef((L * 47 + s * 30), 0, 1, 0);
+                    glPushMatrix();
+                    glScalef(1.5f - L * 0.04f, 0.45f, 0.14f);
+                    glColor3f(0.26f, 0.40f, 0.07f);
+                    drawSphere(0.72f, 8, 5);
+                    glPopMatrix();
+                    glPopMatrix();
+                }
             }
         }
+
+        // Big top frond
         glPushMatrix();
         glTranslatef(0, k.h, 0);
-        glColor3f(0.46f, 0.44f, 0.09f);
-        drawCone(0.09f, 0.9f, 5);
+        glPushMatrix();
+        glScalef(0.30f, 1.6f, 0.20f);
+        glColor3f(0.34f, 0.42f, 0.08f);
+        drawSphere(0.7f, 8, 5);
         glPopMatrix();
+        glPopMatrix();
+
         glPopMatrix();
     }
 }
