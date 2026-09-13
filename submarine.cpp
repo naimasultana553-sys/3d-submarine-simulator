@@ -2528,7 +2528,7 @@ void drawCrewCabin() {
 
     // LIGHT0 - overhead work light (dim cool white) centred above the walkway
     glEnable(GL_LIGHT0);
-    GLfloat l0Pos[] = { 0.0f, 0.95f, 0.0f, 1.0f };
+    GLfloat l0Pos[] = { 0.0f, 1.20f, 0.0f, 1.0f };
     GLfloat l0Amb[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     GLfloat l0Dif[] = { 0.35f, 0.40f, 0.45f, 1.0f };
     GLfloat l0Spc[] = { 0.12f, 0.15f, 0.18f, 1.0f };
@@ -2543,8 +2543,8 @@ void drawCrewCabin() {
     // LIGHT1 / LIGHT2 - ceiling strip glows, left + right (fast falloff = local)
     glEnable(GL_LIGHT1);
     glEnable(GL_LIGHT2);
-    GLfloat lsPos[]  = { 0.0f, 1.00f, -0.72f, 1.0f };
-    GLfloat lsPos2[] = { 0.0f, 1.00f,  0.72f, 1.0f };
+    GLfloat lsPos[]  = { 0.0f, 1.25f, -0.72f, 1.0f };
+    GLfloat lsPos2[] = { 0.0f, 1.25f,  0.72f, 1.0f };
     GLfloat lsAmb[] = { 0.0f, 0.0f, 0.0f, 1.0f };
     GLfloat lsDif[] = { 0.10f, 0.45f, 0.80f, 1.0f };
     GLfloat lsSpc[] = { 0.02f, 0.06f, 0.12f, 1.0f };
@@ -2579,13 +2579,16 @@ void drawCrewCabin() {
 
     // Room bounds in local (pre-scale) units. The scene is later scaled by
     // INT_SX/INT_SY/INT_SZ inside display(), so 1 local metER ~ 1.7/1.3/1.5 world.
-    const float CR_AY = 1.45f;   // vertical hull semi-axis
-    const float CR_BZ = 1.44f;   // horizontal hull semi-axis
+    // CR_AY was raised ~17% so the arched ceiling reads taller without widening
+    // the deck, and the tube (CR_AX) + both bulkheads were pushed out to give a
+    // longer visible corridor down each side of the room.
+    const float CR_AY = 1.70f;   // vertical hull semi-axis (raises the ceiling)
+    const float CR_BZ = 1.44f;   // horizontal hull semi-axis (deck width, unchanged)
     const float CR_CY = 0.22f;   // hull vertical centre
-    const float CR_AX = 1.75f;   // hull longitudinal half extents
+    const float CR_AX = 2.05f;   // hull longitudinal half extents
     const float CR_FY = -0.52f;  // deck top
-    const float CR_XF = 1.55f;   // forward bulkhead
-    const float CR_XA = -1.55f;  // aft bulkhead
+    const float CR_XF = 1.85f;   // forward bulkhead
+    const float CR_XA = -1.85f;  // aft bulkhead
     const int   CR_SEG = 30;     // angular tessellation of the tube
 
     auto hullYZ = [&](float t, float &y, float &z) {
@@ -2609,7 +2612,7 @@ void drawCrewCabin() {
     const float tStep = (2.0f * (float)PI) / CR_SEG;
     const float portholeX[3] = { -0.75f, 0.0f, 0.75f };
     const float portholeY = 0.50f;
-    const float holeR = 0.135f;
+    const float holeR = 0.19f;
 
     cabSurface(COL_HULL, SPEC_ALL, 40);
     glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
@@ -2794,13 +2797,13 @@ void drawCrewCabin() {
     glLineWidth(1.0f);
     glColor3f(0.15f, 0.17f, 0.19f);
     glBegin(GL_LINES);
-    for (int tx = 0; tx <= 8; tx++) {
-        float px = -1.30f + tx * 0.325f;
+    for (int tx = 0; tx <= 5; tx++) {
+        float px = -1.30f + tx * 0.50f;
         glVertex3f(px, CR_FY + 0.018f, -1.15f);
         glVertex3f(px, CR_FY + 0.018f,  1.15f);
     }
-    for (int tz = 0; tz <= 6; tz++) {
-        float pz = -1.15f + tz * 0.40f;
+    for (int tz = 0; tz <= 4; tz++) {
+        float pz = -1.15f + tz * 0.60f;
         glVertex3f(-1.30f, CR_FY + 0.018f, pz);
         glVertex3f( 1.30f, CR_FY + 0.018f, pz);
     }
@@ -2814,40 +2817,32 @@ void drawCrewCabin() {
         glPushMatrix();
         glTranslatef(px, py, pz);
         if (side < 0.0f) glRotatef(180.0f, 0, 1, 0);
-        // dark brushed-steel mount collar covers the rough hull cut-out
+        // Outer rim: a thin dark metal ring (matte, NOT glowing) that barely
+        // overlaps the disc so the window reads as a flush circular port.
         cabSurface(COL_TRIM, SPEC_ALL, 40);
         glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-        drawDisk(0.20f, 0.34f, 36);
-        // raised rim ring, self-lit with the porthole glow colour
-        cabGlow(COL_GLOW);
-        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-        drawTorus(0.175f, 0.225f, 10, 20);
-        cabSurface(COL_TRIM, SPEC_ALL, 40);
-        // deep shadow ring where the glass seats into the rim
-        glColor3f(0.02f, 0.03f, 0.05f);
-        drawDisk(0.135f, 0.175f, 24);
-        // glowing ocean disc: dark at the edge, brighter toward the centre,
-        // simulating looking into the water (simulated depth)
+        drawDisk(0.17f, 0.20f, 32);
+        // Single thin, subtle emissive highlight a few pixels wide on the very
+        // outer rim edge - no glow on the disc, no bloom radiating outward.
+        float rimEm[] = { 0.03f, 0.10f, 0.18f, 1.0f };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, rimEm);
+        drawDisk(0.19f, 0.20f, 32);
+        float noEm[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, noEm);
+        // Inner disc: the window itself - a flat circle showing dim underwater
+        // view, dark blue centre fading to lighter blue-cyan toward the edge.
         glDisable(GL_LIGHTING);
-        glColor3f(0.030f, 0.13f, 0.24f);
-        drawDisk(0.075f, 0.135f, 20);
-        glColor3f(0.06f, 0.25f, 0.46f);
-        drawDisk(0.045f, 0.075f, 20);
-        glColor3f(0.08f, 0.34f, 0.62f);
-        drawDisk(0.020f, 0.045f, 16);
-        glColor3f(COL_GLOW[0], COL_GLOW[1], COL_GLOW[2]);
-        drawDisk(0.0f, 0.020f, 12);
-        glEnable(GL_LIGHTING);
-        cabSurface(COL_TRIM, SPEC_ALL, 40);
-        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-        // clamping bolts around the rim
-        for (int b = 0; b < 8; b++) {
-            float a = (float)b * 0.25f * PI + 0.125f * PI;
-            glPushMatrix();
-            glTranslatef(0.185f * cos(a), 0.185f * sin(a), 0.0f);
-            drawSphere(0.010f, 4, 3);
-            glPopMatrix();
+        glBegin(GL_TRIANGLE_FAN);
+        glColor3f(0.04f, 0.10f, 0.18f);
+        glVertex3f(0.0f, 0.0f, 0.0f);
+        const int vN = 24;
+        for (int i = 0; i <= vN; i++) {
+            float av = (float)i / (float)vN * 2.0f * (float)PI;
+            glColor3f(0.13f, 0.42f, 0.68f);
+            glVertex3f(cosf(av) * 0.17f, sinf(av) * 0.17f, 0.0f);
         }
+        glEnd();
+        glEnable(GL_LIGHTING);
         glPopMatrix();
     };
     porthole(-0.75f, 0.50f,  1.40f,  1.0f);
@@ -2865,14 +2860,14 @@ void drawCrewCabin() {
     for (int s = -1; s <= 1; s += 2) {
         cabSurface(COL_HULL, SPEC_ALL, 40);
         glPushMatrix();
-        glTranslatef(0.0f, 1.06f, s * 0.72f);
+        glTranslatef(0.0f, 1.31f, s * 0.72f);
         glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
         glScalef(2.70f, 0.05f, 0.16f);
         drawCube(1.0f);
         glPopMatrix();
         cabGlow(COL_STRIP);
         glPushMatrix();
-        glTranslatef(0.0f, 1.035f, s * 0.72f);
+        glTranslatef(0.0f, 1.285f, s * 0.72f);
         glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
         glScalef(2.50f, 0.028f, 0.09f);
         drawCube(1.0f);
@@ -2886,14 +2881,14 @@ void drawCrewCabin() {
         // horizontal runs NEVER cross or hide the circular windows below.
         // ventilation ducts
         glPushMatrix();
-        glTranslatef(0.0f, 1.04f, s * 0.55f);
+        glTranslatef(0.0f, 1.29f, s * 0.55f);
         glColor3f(0.34f, 0.36f, 0.39f);
         glScalef(2.30f, 0.06f, 0.14f);
         drawCube(1.0f);
         glPopMatrix();
         for (int g = 0; g < 9; g++) {
             glPushMatrix();
-            glTranslatef(-1.05f + g * 0.26f, 1.005f, s * 0.55f);
+            glTranslatef(-1.05f + g * 0.26f, 1.255f, s * 0.55f);
             glColor3f(0.12f, 0.13f, 0.14f);
             glScalef(0.18f, 0.012f, 0.03f);
             drawCube(1.0f);
@@ -2901,20 +2896,20 @@ void drawCrewCabin() {
         }
         // pipe runs along the curved hull
         glPushMatrix();
-        glTranslatef(0.0f, 1.12f, s * 0.88f);
+        glTranslatef(0.0f, 1.37f, s * 0.88f);
         glColor3f(0.30f, 0.32f, 0.35f);
         glScalef(2.90f, 0.045f, 0.045f);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(0.0f, 0.98f, s * 0.94f);
+        glTranslatef(0.0f, 1.23f, s * 0.94f);
         glColor3f(0.20f, 0.21f, 0.23f);
         glScalef(2.90f, 0.028f, 0.028f);
         drawCube(1.0f);
         glPopMatrix();
         // cable tray on the opposite side
         glPushMatrix();
-        glTranslatef(0.0f, 1.08f, -s * 0.66f);
+        glTranslatef(0.0f, 1.33f, -s * 0.66f);
         glColor3f(0.16f, 0.17f, 0.19f);
         glScalef(2.70f, 0.03f, 0.06f);
         drawCube(1.0f);
@@ -2947,8 +2942,8 @@ void drawCrewCabin() {
         glPopMatrix();
         glPopMatrix();
     };
-    valve(-0.42f, 1.12f, -0.88f);
-    valve( 0.30f, 1.12f,  0.88f);
+    valve(-0.42f, 1.37f, -0.88f);
+    valve( 0.30f, 1.37f,  0.88f);
 
     // ------------------------------------------------------------------
     // 5. FORWARD BULKHEAD + BIG CONTROL SCREEN + SIDE DISPLAYS
@@ -2973,7 +2968,7 @@ void drawCrewCabin() {
     }
     // top header beam spanning the observation glass
     glPushMatrix();
-    glTranslatef(CR_XF - 0.05f, 1.12f, 0.0f);
+    glTranslatef(CR_XF - 0.05f, 1.37f, 0.0f);
     glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
     glScalef(0.14f, 0.06f, 1.90f);
     drawCube(1.0f);
@@ -3060,14 +3055,14 @@ void drawCrewCabin() {
         glDisable(GL_LIGHTING);
         glPushMatrix();
         glColor3f(COL_GLOW[0], COL_GLOW[1], COL_GLOW[2]);
-        glTranslatef(1.45f, 0.95f, s * 1.10f);
+        glTranslatef(1.55f, 0.95f, s * 1.10f);
         drawSphere(0.018f, 6, 5);
         glPopMatrix();
         glEnable(GL_LIGHTING);
         glDisable(GL_LIGHTING);
         glPushMatrix();
         glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
-        glTranslatef(1.42f, 0.95f, s * 1.10f);
+        glTranslatef(1.52f, 0.95f, s * 1.10f);
         drawSphere(0.018f, 6, 5);
         glPopMatrix();
         glEnable(GL_LIGHTING);
@@ -3245,19 +3240,19 @@ void drawCrewCabin() {
     };
     auto frontConsole = [&](float compz, float compw, int thema) {
         glPushMatrix();
-        glTranslatef(1.22f, -0.40f, compz);
+        glTranslatef(1.52f, -0.40f, compz);
         glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.34f, 0.27f, compw);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(1.24f, -0.13f, compz);
+        glTranslatef(1.54f, -0.13f, compz);
         glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.46f, 0.035f, compw);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(1.42f, -0.05f, compz);
+        glTranslatef(1.72f, -0.05f, compz);
         glRotatef(-12, 0, 0, 1);
         glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.035f, 0.26f, compw * 0.80f);
@@ -3265,14 +3260,14 @@ void drawCrewCabin() {
         glPopMatrix();
         glDisable(GL_LIGHTING);
         glPushMatrix();
-        glTranslatef(1.435f, -0.045f, compz);
+        glTranslatef(1.735f, -0.045f, compz);
         glRotatef(-12, 0, 0, 1);
         glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
         glScalef(0.012f, 0.24f, compw * 0.72f);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glTranslatef(1.3985f, -0.045f, compz);
+        glTranslatef(1.6985f, -0.045f, compz);
         glRotatef(-12, 0, 0, 1);
         drawCrewScreenUI(thema);
         glPopMatrix();
@@ -3283,16 +3278,16 @@ void drawCrewCabin() {
             if (k == 0) glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             else if (k == 1) glColor3f(COL_GLOW[0], COL_GLOW[1], COL_GLOW[2]);
             else glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
-            glTranslatef(1.20f - k * 0.14f, -0.10f, compz);
+            glTranslatef(1.50f - k * 0.14f, -0.10f, compz);
             drawSphere(0.012f, 6, 5);
             glPopMatrix();
             glEnable(GL_LIGHTING);
         }
     };
     cabSurface(COL_PANEL, SPEC_CONS, 60);
-    frontConsole(-0.52f, 0.34f, 0);   // sonar station
+    frontConsole(-0.62f, 0.34f, 0);   // sonar station
     frontConsole( 0.00f, 0.34f, 1);   // navigation station
-    frontConsole( 0.52f, 0.34f, 2);   // engine station
+    frontConsole( 0.62f, 0.34f, 2);   // engine station
 
     auto chair = [&](float cx, float cz, float yaw) {
         glPushMatrix();
@@ -3455,10 +3450,10 @@ void drawCrewCabin() {
         glPopMatrix();
     };
 
-    chair(0.97f, -0.52f, 90.0f);
-    crew(0.96f, -0.52f, -0.52f, 90.0f, true, 0);
-    chair(0.97f,  0.52f, 90.0f);
-    crew(0.96f, -0.52f,  0.52f, 90.0f, true, 0);
+    chair(1.27f, -0.58f, 90.0f);
+    crew(1.26f, -0.52f, -0.58f, 90.0f, true, 0);
+    chair(1.27f,  0.58f, 90.0f);
+    crew(1.26f, -0.52f,  0.58f, 90.0f, true, 0);
 
     // ------------------------------------------------------------------
     // 7. SIDE CONSOLES + seated side operators
@@ -3598,10 +3593,10 @@ void drawCrewCabin() {
     cabSurface(COL_PANEL, SPEC_CONS, 60);
     sideConsole(-0.05f, -1.02f, -1.0f, 0);   // depth / speed station (port)
     sideConsole(-0.05f,  1.02f,  1.0f, 1);   // sensor / systems station (starboard)
-    chair(-0.05f, -0.76f, 180.0f);
-    crew(-0.05f, -0.52f, -0.76f, 180.0f, true, 0);
-    chair(-0.05f,  0.76f, 0.0f);
-    crew(-0.05f, -0.52f,  0.76f, 0.0f, true, 0);
+    chair(-0.05f, -0.86f, 180.0f);
+    crew(-0.05f, -0.52f, -0.86f, 180.0f, true, 0);
+    chair(-0.05f,  0.86f, 0.0f);
+    crew(-0.05f, -0.52f,  0.86f, 0.0f, true, 0);
 
     // ------------------------------------------------------------------
     // 8. AFT BULKHEAD - round hatch, cabinets, nav display, standing officer
@@ -3680,13 +3675,13 @@ void drawCrewCabin() {
     glEnable(GL_LIGHTING);
 
     glPushMatrix();
-    glTranslatef(-1.44f, -0.46f, 0.98f);
+    glTranslatef(-1.72f, -0.46f, 0.98f);
     glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
     glScalef(0.07f, 0.14f, 0.07f);
     drawCube(1.0f);
     glPopMatrix();
     glPushMatrix();
-    glTranslatef(-1.42f, -0.47f, -1.00f);
+    glTranslatef(-1.72f, -0.47f, -1.00f);
     glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
     glScalef(0.16f, 0.10f, 0.14f);
     drawCube(1.0f);
@@ -3730,7 +3725,7 @@ void drawCrewCabin() {
     }
 
     // standing officer near the hatch
-    crew(-1.25f, -0.52f, -0.45f, 90.0f, false, 1);
+    crew(-1.55f, -0.52f, -0.45f, 90.0f, false, 1);
 
     glDisable(GL_COLOR_MATERIAL);
 }
@@ -4028,7 +4023,13 @@ void setupFog() {
 void setupCamera() {
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(60.0, (double)windowWidth / windowHeight, 0.1, 500.0);
+    // Wider interior FOV opens up the cabin so it reads taller and less
+    // cramped; exterior/free camera modes keep the standard 60 degrees.
+    bool interiorView = cameraMode == CAM_CONTROL_SCREEN ||
+        cameraMode == CAM_INTERIOR || cameraMode == CAM_FRONT_WINDOW ||
+        cameraMode == CAM_LEFT_WINDOW || cameraMode == CAM_RIGHT_WINDOW;
+    double fovY = interiorView ? 68.0 : 60.0;
+    gluPerspective(fovY, (double)windowWidth / windowHeight, 0.1, 500.0);
     glMatrixMode(GL_MODELVIEW);
     glLoadIdentity();
 
@@ -4528,8 +4529,17 @@ void display() {
             glTranslatef(sub.x, sub.y, sub.z);
             glRotatef(sub.yaw, 0, 1, 0);
             if (cameraMode == CAM_CONTROL_SCREEN) {
+                // Cabin interior fog: dark navy-blue EXP2 so far walls/ceiling
+                // fade softly instead of terminating on a hard edge.
+                glEnable(GL_FOG);
+                glFogi(GL_FOG_MODE, GL_EXP2);
+                GLfloat cabinFogCol[] = { 0.01f, 0.02f, 0.05f, 1.0f };
+                glFogfv(GL_FOG_COLOR, cabinFogCol);
+                glFogf(GL_FOG_DENSITY, 0.03f);
+                glHint(GL_FOG_HINT, GL_NICEST);
                 glScalef(INT_SX, INT_SY, INT_SZ);
                 drawCrewCabin();
+                glDisable(GL_FOG);
             } else {
                 drawInterior();
             }
