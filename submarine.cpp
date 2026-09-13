@@ -2479,14 +2479,103 @@ void drawInterior() {
 // DRAW CREW CABIN (distinct quarters behind the bridge)
 // ============================================================
 void drawCrewCabin() {
-    // matte interior metal: zero specular so the lamps don't paint soft
-    // white smear lobes across the curved ceiling (room stays lit by diffuse)
-    GLfloat matSpec[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    GLfloat matShine[] = { 1.0f };
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpec);
-    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShine);
+    // Cabin palette (exact values). Cool cyan/blue accents only - no warm colours.
+    const float COL_HULL[3]  = { 0.06f, 0.08f, 0.11f };
+    const float COL_PANEL[3] = { 0.10f, 0.13f, 0.17f };
+    const float COL_FLOOR[3] = { 0.04f, 0.05f, 0.06f };
+    const float COL_STRIP[3] = { 0.55f, 0.78f, 1.00f };
+    const float COL_BORDER[3]= { 0.20f, 0.80f, 1.00f };
+    const float COL_GLOW[3]  = { 0.10f, 0.43f, 0.78f };
+    const float COL_MONBG[3] = { 0.04f, 0.10f, 0.18f };
+    const float COL_TRIM[3]  = { 0.35f, 0.38f, 0.41f };
+    const float SPEC_ALL[3]  = { 0.78f, 0.84f, 0.90f };
+    const float SPEC_CONS[3] = { 0.85f, 0.90f, 0.95f };
+    const float SPEC_FLOOR[3]= { 0.40f, 0.45f, 0.50f };
+
+    // Surface material helper: ambient = colour*0.3, diffuse = colour, then
+    // specular + shininess per surface class. GL_COLOR_MATERIAL only drives
+    // the diffuse channel, so glColor* calls keep working everywhere and the
+    // requested ambient/diffuse split stays exact.
+    glEnable(GL_LIGHTING);
     glEnable(GL_COLOR_MATERIAL);
-    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
+    glShadeModel(GL_SMOOTH);
+
+    auto cabSurface = [&](const float c[3], const float spec[3], float shin) {
+        float amb[4] = { c[0] * 0.3f, c[1] * 0.3f, c[2] * 0.3f, 1.0f };
+        float dfu[4] = { c[0], c[1], c[2], 1.0f };
+        float spc[4] = { spec[0], spec[1], spec[2], 1.0f };
+        float noEm[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, amb);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, dfu);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spc);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, noEm);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, shin);
+    };
+    auto cabGlow = [&](const float c[3]) {
+        float zero[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        float em[4]   = { c[0], c[1], c[2], 1.0f };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, zero);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, zero);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, zero);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, em);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 10.0f);
+    };
+
+    // Dim cool global ambient - NOT black
+    GLfloat cabAmbient[] = { 0.05f, 0.07f, 0.10f, 1.0f };
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, cabAmbient);
+
+    // LIGHT0 - overhead work light (dim cool white) centred above the walkway
+    glEnable(GL_LIGHT0);
+    GLfloat l0Pos[] = { 0.0f, 0.95f, 0.0f, 1.0f };
+    GLfloat l0Amb[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    GLfloat l0Dif[] = { 0.35f, 0.40f, 0.45f, 1.0f };
+    GLfloat l0Spc[] = { 0.12f, 0.15f, 0.18f, 1.0f };
+    glLightfv(GL_LIGHT0, GL_POSITION, l0Pos);
+    glLightfv(GL_LIGHT0, GL_AMBIENT, l0Amb);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, l0Dif);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, l0Spc);
+    glLightf(GL_LIGHT0, GL_CONSTANT_ATTENUATION, 1.0f);
+    glLightf(GL_LIGHT0, GL_LINEAR_ATTENUATION, 0.05f);
+    glLightf(GL_LIGHT0, GL_QUADRATIC_ATTENUATION, 0.0f);
+
+    // LIGHT1 / LIGHT2 - ceiling strip glows, left + right (fast falloff = local)
+    glEnable(GL_LIGHT1);
+    glEnable(GL_LIGHT2);
+    GLfloat lsPos[]  = { 0.0f, 1.00f, -0.72f, 1.0f };
+    GLfloat lsPos2[] = { 0.0f, 1.00f,  0.72f, 1.0f };
+    GLfloat lsAmb[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    GLfloat lsDif[] = { 0.10f, 0.45f, 0.80f, 1.0f };
+    GLfloat lsSpc[] = { 0.02f, 0.06f, 0.12f, 1.0f };
+    glLightfv(GL_LIGHT1, GL_POSITION, lsPos);
+    glLightfv(GL_LIGHT1, GL_AMBIENT, lsAmb);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, lsDif);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, lsSpc);
+    glLightf(GL_LIGHT1, GL_CONSTANT_ATTENUATION, 1.0f);
+    glLightf(GL_LIGHT1, GL_LINEAR_ATTENUATION, 0.15f);
+    glLightf(GL_LIGHT1, GL_QUADRATIC_ATTENUATION, 0.0f);
+    glLightfv(GL_LIGHT2, GL_POSITION, lsPos2);
+    glLightfv(GL_LIGHT2, GL_AMBIENT, lsAmb);
+    glLightfv(GL_LIGHT2, GL_DIFFUSE, lsDif);
+    glLightfv(GL_LIGHT2, GL_SPECULAR, lsSpc);
+    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 1.0f);
+    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.15f);
+    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.0f);
+
+    // LIGHT3 - cyan glow washing off the main screen over chairs and floor
+    glEnable(GL_LIGHT3);
+    GLfloat l3Pos[] = { 1.35f, 0.50f, 0.0f, 1.0f };
+    GLfloat l3Amb[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    GLfloat l3Dif[] = { 0.10f, 0.35f, 0.55f, 1.0f };
+    GLfloat l3Spc[] = { 0.02f, 0.06f, 0.10f, 1.0f };
+    glLightfv(GL_LIGHT3, GL_POSITION, l3Pos);
+    glLightfv(GL_LIGHT3, GL_AMBIENT, l3Amb);
+    glLightfv(GL_LIGHT3, GL_DIFFUSE, l3Dif);
+    glLightfv(GL_LIGHT3, GL_SPECULAR, l3Spc);
+    glLightf(GL_LIGHT3, GL_CONSTANT_ATTENUATION, 1.0f);
+    glLightf(GL_LIGHT3, GL_LINEAR_ATTENUATION, 0.10f);
+    glLightf(GL_LIGHT3, GL_QUADRATIC_ATTENUATION, 0.0f);
 
     // Room bounds in local (pre-scale) units. The scene is later scaled by
     // INT_SX/INT_SY/INT_SZ inside display(), so 1 local metER ~ 1.7/1.3/1.5 world.
@@ -2522,6 +2611,8 @@ void drawCrewCabin() {
     const float portholeY = 0.50f;
     const float holeR = 0.135f;
 
+    cabSurface(COL_HULL, SPEC_ALL, 40);
+    glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
     glBegin(GL_QUADS);
     for (int ix = 0; ix < 25; ix++) {
         float x0 = -CR_AX + ix * xStride;
@@ -2558,7 +2649,7 @@ void drawCrewCabin() {
             lum += ((float)hash - 1.5f) * 0.03f;
             if (lum < 0.5f) lum = 0.5f;
             if (lum > 1.25f) lum = 1.25f;
-            float cR = 0.32f * lum, cG = 0.34f * lum, cB = 0.37f * lum;
+            float cR = COL_HULL[0] * lum, cG = COL_HULL[1] * lum, cB = COL_HULL[2] * lum;
             glColor3f(cR, cG, cB);
 
             float nAy, nAz, nBy, nBz, nCy, nCz, nDy, nDz;
@@ -2602,9 +2693,8 @@ void drawCrewCabin() {
             hullNormal(yD, zD, nDy, nDz);
             float tMid = 0.5f * (t0 + t1);
             if (sin(tMid) > 0.10f) {
-                // solid ash-gray metal roof everywhere above eye level, so
-                // the curved interior hull closes off the top of the room
-                glColor4f(0.30f, 0.32f, 0.35f, 1.0f);
+                // solid metal roof above eye level, dark glossy hull colour
+                glColor4f(COL_HULL[0], COL_HULL[1], COL_HULL[2], 1.0f);
             } else {
                 glColor4f(0.22f, 0.50f, 0.70f, 0.07f);
             }
@@ -2658,7 +2748,7 @@ void drawCrewCabin() {
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glColor4f(0.22f, 0.50f, 0.70f, 0.07f);
         } else {
-            glColor3f(0.14f, 0.15f, 0.16f);
+            glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
         }
         glNormal3f(dirX, 0.0f, 0.0f);
         glBegin(GL_TRIANGLE_FAN);
@@ -2668,9 +2758,9 @@ void drawCrewCabin() {
             float y, z;
             hullYZ(t, y, z);
             if (glass && sin(t) > solidSin) {
-                // upper sectors of the bow dome use the same ash-gray metal
-                // brow, so no bright water or sky washes over the room top
-                glColor4f(0.30f, 0.32f, 0.35f, 1.0f);
+                // upper sectors of the bow dome use the same dark glossy
+                // metal brow, so no bright water or sky washes over the top
+                glColor4f(COL_HULL[0], COL_HULL[1], COL_HULL[2], 1.0f);
             }
             glVertex3f(capX, y, z);
         }
@@ -2683,56 +2773,39 @@ void drawCrewCabin() {
     capFan( CR_AX, -1.0f, true,  0.10f);
 
     // ------------------------------------------------------------------
-    // 2. DECK - solid metal platform, walking plates, centre aisle stripe
+    // 2. DECK - dark tiled floor grid, thin lighter seam lines, no centre
+    //    walking stripe
     // ------------------------------------------------------------------
+    cabSurface(COL_FLOOR, SPEC_FLOOR, 20);
     glPushMatrix();
     glTranslatef(0.0f, CR_FY - 0.10f, 0.0f);
-    glColor3f(0.12f, 0.13f, 0.13f);
+    glColor3f(COL_FLOOR[0], COL_FLOOR[1], COL_FLOOR[2]);
     glScalef(3.50f, 0.20f, 2.46f);
     drawCube(1.0f);
     glPopMatrix();
     glPushMatrix();
     glTranslatef(0.0f, CR_FY, 0.0f);
-    glColor3f(0.22f, 0.24f, 0.23f);
-    glScalef(3.30f, 0.03f, 2.42f);
+    glColor3f(COL_FLOOR[0], COL_FLOOR[1], COL_FLOOR[2]);
+    glScalef(3.30f, 0.025f, 2.42f);
     drawCube(1.0f);
     glPopMatrix();
-    glPushMatrix();
-    glTranslatef(0.0f, CR_FY + 0.012f, 0.0f);
-    glColor3f(0.30f, 0.32f, 0.30f);
-    glScalef(3.00f, 0.012f, 0.64f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(0.0f, CR_FY + 0.016f, 0.0f);
-    glColor3f(0.45f, 0.43f, 0.20f);
-    glScalef(2.75f, 0.006f, 0.09f);
-    drawCube(1.0f);
-    glPopMatrix();
-    for (int j = 0; j < 14; j++) {
-        glPushMatrix();
-        glTranslatef(-1.30f + j * 0.20f, CR_FY + 0.017f, 0.0f);
-        glColor3f(0.12f, 0.13f, 0.12f);
-        glScalef(0.015f, 0.008f, 0.62f);
-        drawCube(1.0f);
-        glPopMatrix();
+    // thin lighter tile seam lines in a neat grid across the dark tiles
+    glDisable(GL_LIGHTING);
+    glLineWidth(1.0f);
+    glColor3f(0.15f, 0.17f, 0.19f);
+    glBegin(GL_LINES);
+    for (int tx = 0; tx <= 8; tx++) {
+        float px = -1.30f + tx * 0.325f;
+        glVertex3f(px, CR_FY + 0.018f, -1.15f);
+        glVertex3f(px, CR_FY + 0.018f,  1.15f);
     }
-    for (int s = -1; s <= 1; s += 2) {
-        for (int zz = 0; zz < 2; zz++) {
-            glPushMatrix();
-            glTranslatef(0.0f, CR_FY + 0.017f, s * (0.42f + zz * 0.43f));
-            glColor3f(0.13f, 0.14f, 0.13f);
-            glScalef(3.10f, 0.008f, 0.014f);
-            drawCube(1.0f);
-            glPopMatrix();
-        }
-        glPushMatrix();
-        glTranslatef(0.0f, CR_FY + 0.014f, s * 1.14f);
-        glColor3f(0.10f, 0.11f, 0.11f);
-        glScalef(3.10f, 0.02f, 0.06f);
-        drawCube(1.0f);
-        glPopMatrix();
+    for (int tz = 0; tz <= 6; tz++) {
+        float pz = -1.15f + tz * 0.40f;
+        glVertex3f(-1.30f, CR_FY + 0.018f, pz);
+        glVertex3f( 1.30f, CR_FY + 0.018f, pz);
     }
+    glEnd();
+    glEnable(GL_LIGHTING);
 
     // ------------------------------------------------------------------
     // 3. PORTHOLES - six small circular metal-rimmed ocean windows
@@ -2741,41 +2814,38 @@ void drawCrewCabin() {
         glPushMatrix();
         glTranslatef(px, py, pz);
         if (side < 0.0f) glRotatef(180.0f, 0, 1, 0);
-        // Solid metal mount collar: the hull cut-out is a coarse quad grid, so
-        // its jagged rim can reach ~0.31 from the window centre. This plate
-        // covers the whole rough opening and makes the wall one continuous
-        // ash-gray metal surface - the ocean can now only show through the
-        // circular glass pane inside the rim, never through broken edges.
-        glColor3f(0.31f, 0.33f, 0.36f);
-        drawDisk(0.075f, 0.34f, 36);
-        // outer rim ring + glass seat
-        glColor3f(0.26f, 0.28f, 0.31f);
-        drawTorus(0.070f, 0.118f, 10, 20);
-        glColor3f(0.30f, 0.33f, 0.36f);
-        drawDisk(0.02f, 0.075f, 20);
-        // translucent ocean glass
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // dark brushed-steel mount collar covers the rough hull cut-out
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+        drawDisk(0.20f, 0.34f, 36);
+        // raised rim ring, self-lit with the porthole glow colour
+        cabGlow(COL_GLOW);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+        drawTorus(0.175f, 0.225f, 10, 20);
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        // deep shadow ring where the glass seats into the rim
+        glColor3f(0.02f, 0.03f, 0.05f);
+        drawDisk(0.135f, 0.175f, 24);
+        // glowing ocean disc: dark at the edge, brighter toward the centre,
+        // simulating looking into the water (simulated depth)
         glDisable(GL_LIGHTING);
-        glColor4f(0.30f, 0.66f, 0.86f, 0.45f);
-        glPushMatrix();
-        glTranslatef(0.0f, 0.0f, 0.010f);
-        drawDisk(0.0f, 0.075f, 20);
-        glPopMatrix();
-        glColor4f(0.85f, 0.95f, 1.0f, 0.22f);
-        glPushMatrix();
-        glTranslatef(0.0f, 0.0f, 0.016f);
-        drawDisk(0.0f, 0.035f, 16);
-        glPopMatrix();
+        glColor3f(0.030f, 0.13f, 0.24f);
+        drawDisk(0.075f, 0.135f, 20);
+        glColor3f(0.06f, 0.25f, 0.46f);
+        drawDisk(0.045f, 0.075f, 20);
+        glColor3f(0.08f, 0.34f, 0.62f);
+        drawDisk(0.020f, 0.045f, 16);
+        glColor3f(COL_GLOW[0], COL_GLOW[1], COL_GLOW[2]);
+        drawDisk(0.0f, 0.020f, 12);
         glEnable(GL_LIGHTING);
-        glDisable(GL_BLEND);
-        // clamping bolts
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+        // clamping bolts around the rim
         for (int b = 0; b < 8; b++) {
             float a = (float)b * 0.25f * PI + 0.125f * PI;
             glPushMatrix();
-            glTranslatef(0.090f * cos(a), 0.090f * sin(a), 0.0f);
-            glColor3f(0.13f, 0.14f, 0.15f);
-            drawSphere(0.009f, 4, 3);
+            glTranslatef(0.185f * cos(a), 0.185f * sin(a), 0.0f);
+            drawSphere(0.010f, 4, 3);
             glPopMatrix();
         }
         glPopMatrix();
@@ -2790,29 +2860,26 @@ void drawCrewCabin() {
     // ------------------------------------------------------------------
     // 4. OVERHEAD - light housing, ducts, pipes, cable trays, valves
     // ------------------------------------------------------------------
-    glPushMatrix();
-    glTranslatef(0.0f, 0.80f, 0.0f);
-    glColor3f(0.24f, 0.25f, 0.27f);
-    glScalef(2.70f, 0.06f, 0.20f);
-    drawCube(1.0f);
-    glPopMatrix();
-    // Overhead lighting is matte and low-glare: a recessed ash-gray strip
-    // with plain lamp caps. No additive blending, so no white blur lobes
-    // wash across the curved ceiling at the top of the room.
-    glPushMatrix();
-    glTranslatef(0.0f, 0.775f, 0.0f);
-    glColor3f(0.46f, 0.47f, 0.49f);
-    glScalef(2.40f, 0.010f, 0.13f);
-    drawCube(1.0f);
-    glPopMatrix();
-    for (int h = 0; h < 5; h++) {
+    // Recessed rectangular light strips set into the ceiling down BOTH sides
+    // of the room, self-lit with the strip glow colour.
+    for (int s = -1; s <= 1; s += 2) {
+        cabSurface(COL_HULL, SPEC_ALL, 40);
         glPushMatrix();
-        glColor3f(0.42f, 0.43f, 0.45f);
-        glTranslatef(-1.20f + h * 0.60f, 0.79f, 0.0f);
-        drawSphere(0.05f, 8, 6);
+        glTranslatef(0.0f, 1.06f, s * 0.72f);
+        glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
+        glScalef(2.70f, 0.05f, 0.16f);
+        drawCube(1.0f);
+        glPopMatrix();
+        cabGlow(COL_STRIP);
+        glPushMatrix();
+        glTranslatef(0.0f, 1.035f, s * 0.72f);
+        glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
+        glScalef(2.50f, 0.028f, 0.09f);
+        drawCube(1.0f);
         glPopMatrix();
     }
 
+    cabSurface(COL_HULL, SPEC_ALL, 40);
     for (int s = -1; s <= 1; s += 2) {
         // Overhead service tiers: the duct runs, pipes and cable tray sit well
         // above the porthole row, tucked under the curved upper hull, so these
@@ -2857,6 +2924,7 @@ void drawCrewCabin() {
     auto valve = [&](float vx, float vy, float vz) {
         glPushMatrix();
         glTranslatef(vx, vy, vz);
+        cabSurface(COL_HULL, SPEC_ALL, 40);
         glColor3f(0.34f, 0.36f, 0.39f);
         glPushMatrix();
         glRotatef(90, 0, 1, 0);
@@ -2865,11 +2933,11 @@ void drawCrewCabin() {
         glPushMatrix();
         glTranslatef(0.0f, 0.10f, 0.0f);
         glRotatef(-90, 1, 0, 0);
-        glColor3f(0.20f, 0.12f, 0.08f);
+        glColor3f(0.12f, 0.17f, 0.22f);
         drawTorus(0.05f, 0.090f, 8, 14);
         for (int spv = 0; spv < 3; spv++) {
             glPushMatrix();
-            glColor3f(0.25f, 0.16f, 0.10f);
+            glColor3f(0.15f, 0.20f, 0.26f);
             glRotatef((float)spv * 120.0f, 0, 1, 0);
             glTranslatef(0.050f, 0.0f, 0.0f);
             glScalef(0.10f, 0.016f, 0.016f);
@@ -2887,9 +2955,10 @@ void drawCrewCabin() {
     // ------------------------------------------------------------------
     // Lower part of the forward bulkhead stays solid metal; above it the hull
     // nose band + cap (already drawn as glass) become the 'front view'.
+    cabSurface(COL_HULL, SPEC_ALL, 40);
     glPushMatrix();
     glTranslatef(CR_XF, -0.185f, 0.0f);
-    glColor3f(0.36f, 0.40f, 0.44f);
+    glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
     glScalef(0.14f, 0.68f, 2.46f);
     drawCube(1.0f);
     glPopMatrix();
@@ -2905,38 +2974,47 @@ void drawCrewCabin() {
     // top header beam spanning the observation glass
     glPushMatrix();
     glTranslatef(CR_XF - 0.05f, 1.12f, 0.0f);
-    glColor3f(0.30f, 0.34f, 0.38f);
+    glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
     glScalef(0.14f, 0.06f, 1.90f);
     drawCube(1.0f);
     glPopMatrix();
     // side status displays flanking the main screen
     for (int s = -1; s <= 1; s += 2) {
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
         glPushMatrix();
-        glColor3f(0.10f, 0.11f, 0.13f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glTranslatef(CR_XF - 0.06f, 0.34f, s * 1.04f);
         glScalef(0.02f, 0.42f, 0.30f);
         drawCube(1.0f);
         glPopMatrix();
         glDisable(GL_LIGHTING);
         glPushMatrix();
-        glColor3f(0.14f, 0.50f, 0.36f);
+        glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
         glTranslatef(CR_XF - 0.05f, 0.34f, s * 1.04f);
         glScalef(0.01f, 0.38f, 0.26f);
         drawCube(1.0f);
         glPopMatrix();
+        glPushMatrix();
+        glTranslatef(CR_XF - 0.05f, 0.34f, s * 1.04f);
+        glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
+        glScalef(0.011f, 0.035f, 0.22f);
+        drawCube(1.0f);
+        glPopMatrix();
         glEnable(GL_LIGHTING);
     }
-    // main front-view screen: slim metal bezel frame around the bow window
+    // main front-view screen: thin glowing cyan border frame around the window
+    cabGlow(COL_BORDER);
     for (int bd = 0; bd < 4; bd++) {
         glPushMatrix();
         if (bd == 0) { glTranslatef(CR_XF - 0.13f, 0.93f, 0.0f);   glScalef(0.06f, 0.10f, 1.90f); }
         if (bd == 1) { glTranslatef(CR_XF - 0.13f, 0.135f, 0.0f);  glScalef(0.06f, 0.13f, 1.90f); }
         if (bd == 2) { glTranslatef(CR_XF - 0.13f, 0.54f, -0.90f); glScalef(0.06f, 0.68f, 0.12f); }
         if (bd == 3) { glTranslatef(CR_XF - 0.13f, 0.54f,  0.90f); glScalef(0.06f, 0.68f, 0.12f); }
-        glColor3f(0.10f, 0.12f, 0.14f);
+        glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
         drawCube(1.0f);
         glPopMatrix();
     }
+    cabSurface(COL_HULL, SPEC_ALL, 40);
     // big bow window: fully open glass, no veils or glows - the ocean stays
     // crisp. Only the thin structural nose glass tints the view slightly.
     // EXTERNAL CAMERA - LIVE caption banner under the feed
@@ -2947,26 +3025,48 @@ void drawCrewCabin() {
     glScalef(0.02f, 0.055f, 0.95f);
     drawCube(1.0f);
     glPopMatrix();
-    glColor3f(0.35f, 0.95f, 1.0f);
+    glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
     drawText3D(CR_XF - 0.175f, 0.225f, -0.30f, "EXT CAM - LIVE", GLUT_BITMAP_HELVETICA_12);
     glPushMatrix();
     glTranslatef(CR_XF - 0.155f, 0.235f, 0.80f);
-    glColor4f(1.0f, 0.18f, 0.18f, 0.85f);
+    glColor4f(COL_GLOW[0], COL_GLOW[1], COL_GLOW[2], 0.95f);
     drawSphere(0.016f, 6, 5);
     glPopMatrix();
+    // small circular compass graphic pinned to the top-right of the screen
+    {
+        const float ccy = 0.70f, ccz = 0.62f, crad = 0.080f;
+        const float ccx = CR_XF - 0.02f;
+        float ca = sub.yaw * 0.0174533f;
+        glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
+        glBegin(GL_LINE_LOOP);
+        for (int q = 0; q < 24; q++) {
+            float a = q * (2.0f * (float)PI) / 24.0f;
+            glVertex3f(ccx, ccy + sin(a) * crad, ccz + cos(a) * crad);
+        }
+        glEnd();
+        glBegin(GL_LINES);
+        glVertex3f(ccx, ccy - crad, ccz); glVertex3f(ccx, ccy + crad, ccz);
+        glVertex3f(ccx, ccy, ccz - crad); glVertex3f(ccx, ccy, ccz + crad);
+        glEnd();
+        glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
+        glBegin(GL_LINES);
+        glVertex3f(ccx, ccy, ccz);
+        glVertex3f(ccx, ccy + sin(ca) * crad, ccz + cos(ca) * crad);
+        glEnd();
+    }
     glEnable(GL_LIGHTING);
-    // red / green running lamps near the top corners
+    // cyan glowing running lamps near the top corners
     for (int s = -1; s <= 1; s += 2) {
         glDisable(GL_LIGHTING);
         glPushMatrix();
-        glColor3f(0.9f, 0.2f, 0.2f);
+        glColor3f(COL_GLOW[0], COL_GLOW[1], COL_GLOW[2]);
         glTranslatef(1.45f, 0.95f, s * 1.10f);
         drawSphere(0.018f, 6, 5);
         glPopMatrix();
         glEnable(GL_LIGHTING);
         glDisable(GL_LIGHTING);
         glPushMatrix();
-        glColor3f(0.2f, 0.9f, 0.3f);
+        glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
         glTranslatef(1.42f, 0.95f, s * 1.10f);
         drawSphere(0.018f, 6, 5);
         glPopMatrix();
@@ -3021,12 +3121,12 @@ void drawCrewCabin() {
             glVertex3f(ctx + xo, y2, z1);
             glEnd();
         };
-        // faint blue backlight so the monitor glows instead of pitch black
-        glColor4f(0.03f, 0.11f, 0.20f, 1.0f);
+        // monitor background uses the slate-blue screen colour
+        glColor4f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2], 1.0f);
         screenQuad(-0.12f, -0.115f, 0.12f, 0.115f, 0.001f);
         if (thema == 0) {                       // SONAR / radar scope
             float cy0 = -0.015f, cz0 = 0.0f;
-            glColor3f(0.12f, 0.85f, 0.95f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             drawRing3D(ctx, cy0, cz0, 0.085f, 24);
             drawRing3D(ctx, cy0, cz0, 0.055f, 24);
             drawLine3D(ctx, cy0 - 0.085f, cz0, ctx, cy0 + 0.085f, cz0);
@@ -3035,12 +3135,12 @@ void drawCrewCabin() {
             float sa = introTimer * 0.0014f;
             for (int i = 0; i < 26; i++) {
                 float a = sa + i * 0.022f;
-                glColor4f(0.10f, 0.70f, 0.90f, 0.30f - i * 0.009f);
+                glColor4f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2], 0.30f - i * 0.009f);
                 drawLine3D(ctx, cy0 + sin(a) * 0.055f, cz0 + cos(a) * 0.055f,
                                ctx, cy0 + sin(a) * 0.085f, cz0 + cos(a) * 0.085f);
             }
             // echoing sonar contacts
-            glColor3f(0.95f, 0.40f, 0.16f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             for (int b = 0; b < 3; b++) {
                 float ba = b * 2.1f + 0.6f;
                 float br = 0.048f + noise01(b, 5, 31) * 0.028f;
@@ -3059,21 +3159,21 @@ void drawCrewCabin() {
             }
             // filled sweep wedge so the scan reads at any distance
             float sa2 = sa;
-            glColor4f(0.10f, 0.55f, 0.70f, 0.40f);
+            glColor4f(0.08f, 0.40f, 0.65f, 0.40f);
             glBegin(GL_TRIANGLES);
             glVertex3f(ctx - 0.0008f, cy0, cz0);
             glVertex3f(ctx - 0.0008f, cy0 + sin(sa2) * 0.085f, cz0 + cos(sa2) * 0.085f);
             glVertex3f(ctx - 0.0008f, cy0 + sin(sa2 + 0.4f) * 0.085f, cz0 + cos(sa2 + 0.4f) * 0.085f);
             glEnd();
             // bottom status bar
-            glColor4f(0.15f, 0.80f, 0.45f, 0.9f);
+            glColor4f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2], 0.9f);
             screenQuad(-0.115f, -0.115f, -0.095f, 0.02f, -0.001f);
-            glColor3f(0.30f, 0.95f, 1.0f);
+            glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             // SONAR tag drawn as vector ticks (no bitmap text on tiny screens)
             drawLine3D(ctx, -0.115f, -0.09f, ctx, -0.060f, -0.09f);
             drawLine3D(ctx, -0.115f, -0.10f, ctx, -0.080f, -0.10f);
         } else if (thema == 1) {                // NAV / chart plotter
-            glColor3f(0.25f, 0.80f, 0.55f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             for (int gr = 0; gr <= 4; gr++) {
                 float gz = -0.09f + gr * 0.045f;
                 drawLine3D(ctx, -0.11f, gz, ctx, 0.11f, gz);
@@ -3086,13 +3186,13 @@ void drawCrewCabin() {
             float sx = -0.02f + sin(introTimer * 0.0005f) * 0.02f;
             float sz = 0.02f + cos(introTimer * 0.0004f) * 0.02f;
             float hd = sub.yaw * 0.0174533f;
-            glColor3f(0.20f, 0.95f, 0.45f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             drawLine3D(ctx, sx, sz, ctx, sx + sin(hd) * 0.05f, sz + cos(hd) * 0.05f);
             drawLine3D(ctx, sx, sz - 0.028f, ctx, sx, sz - 0.012f);
             drawLine3D(ctx, sx, sz, ctx, sx + 0.028f, sz);
             drawLine3D(ctx, sx, sz, ctx, sx - 0.028f, sz);
             // waypoint boxes + filled cores
-            glColor3f(0.95f, 0.45f, 0.20f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             for (int wp = 0; wp < 3; wp++) {
                 float wx = -0.05f + wp * 0.05f;
                 float wz = -0.045f + (noise01(wp, 3, 41) - 0.5f) * 0.06f;
@@ -3105,17 +3205,17 @@ void drawCrewCabin() {
                 glEnd();
             }
             // filled own-ship marker + bottom status bar
-            glColor3f(0.15f, 0.95f, 0.40f);
+            glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             screenQuad(sx - 0.011f, sz - 0.011f, sx + 0.011f, sz + 0.011f, -0.001f);
             screenQuad(-0.115f, -0.115f, -0.095f, 0.02f, -0.001f);
-            glColor3f(0.25f, 0.95f, 0.85f);
+            glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             // NAV tag as vector ticks
             drawLine3D(ctx, -0.112f, -0.10f, ctx, -0.060f, -0.10f);
-            glColor3f(0.20f, 0.95f, 0.45f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             char mb[32];
             (void)mb;
         } else {                                // ENGINE / machinery
-            glColor3f(0.30f, 0.95f, 1.0f);
+            glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             // ENG tag as vector ticks
             drawLine3D(ctx, -0.115f, -0.10f, ctx, -0.065f, -0.10f);
             for (int gi = 0; gi < 3; gi++) {
@@ -3124,21 +3224,21 @@ void drawCrewCabin() {
                 if (gi == 0) gv = 0.35f + 0.55f * fabs(sub.speed) / 3.0f;
                 else if (gi == 1) gv = 0.40f + 0.5f * fmod(sin(introTimer * 0.0008f) + 1.0f, 1.0f);
                 else gv = 0.25f + 0.65f * noise01((int)(introTimer * 0.05f), 17, 61);
-                glColor3f(0.16f, 0.28f, 0.34f);
+                glColor3f(0.06f, 0.16f, 0.28f);
                 drawLine3D(ctx, gx, -0.09f, ctx, gx, 0.09f);
-                glColor3f(0.20f, 0.90f, 0.50f);
+                glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
                 drawLine3D(ctx, gx, -0.09f, ctx, gx, -0.09f + gv * 0.18f);
                 // filled bar body so gauges read at distance
-                glColor4f(0.15f, 0.75f, 0.40f, 0.9f);
+                glColor4f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2], 0.9f);
                 screenQuad(-0.09f, gx - 0.020f, -0.09f + gv * 0.18f, gx + 0.020f, -0.001f);
             }
-            glColor3f(0.20f, 0.95f, 0.60f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             // status tick
             drawLine3D(ctx, 0.000f, 0.10f, ctx, 0.045f, 0.10f);
             drawLine3D(ctx, -0.100f, -0.02f, ctx, -0.070f, -0.02f);
             drawLine3D(ctx, -0.070f, -0.02f, ctx, -0.105f, 0.035f);
             // top status block
-            glColor4f(0.20f, 0.85f, 0.55f, 0.9f);
+            glColor4f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2], 0.9f);
             screenQuad(0.085f, -0.115f, 0.110f, -0.03f, -0.001f);
         }
         glDisable(GL_BLEND);
@@ -3146,20 +3246,20 @@ void drawCrewCabin() {
     auto frontConsole = [&](float compz, float compw, int thema) {
         glPushMatrix();
         glTranslatef(1.22f, -0.40f, compz);
-        glColor3f(0.13f, 0.15f, 0.18f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.34f, 0.27f, compw);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
         glTranslatef(1.24f, -0.13f, compz);
-        glColor3f(0.22f, 0.26f, 0.30f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.46f, 0.035f, compw);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
         glTranslatef(1.42f, -0.05f, compz);
         glRotatef(-12, 0, 0, 1);
-        glColor3f(0.10f, 0.11f, 0.13f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.035f, 0.26f, compw * 0.80f);
         drawCube(1.0f);
         glPopMatrix();
@@ -3167,7 +3267,7 @@ void drawCrewCabin() {
         glPushMatrix();
         glTranslatef(1.435f, -0.045f, compz);
         glRotatef(-12, 0, 0, 1);
-        glColor3f(0.02f, 0.03f, 0.05f);
+        glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
         glScalef(0.012f, 0.24f, compw * 0.72f);
         drawCube(1.0f);
         glPopMatrix();
@@ -3180,15 +3280,16 @@ void drawCrewCabin() {
         for (int k = 0; k < 3; k++) {
             glDisable(GL_LIGHTING);
             glPushMatrix();
-            if (k == 0) glColor3f(0.8f, 0.2f, 0.2f);
-            else if (k == 1) glColor3f(0.9f, 0.8f, 0.2f);
-            else glColor3f(0.2f, 0.9f, 0.3f);
+            if (k == 0) glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
+            else if (k == 1) glColor3f(COL_GLOW[0], COL_GLOW[1], COL_GLOW[2]);
+            else glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             glTranslatef(1.20f - k * 0.14f, -0.10f, compz);
             drawSphere(0.012f, 6, 5);
             glPopMatrix();
             glEnable(GL_LIGHTING);
         }
     };
+    cabSurface(COL_PANEL, SPEC_CONS, 60);
     frontConsole(-0.52f, 0.34f, 0);   // sonar station
     frontConsole( 0.00f, 0.34f, 1);   // navigation station
     frontConsole( 0.52f, 0.34f, 2);   // engine station
@@ -3200,12 +3301,12 @@ void drawCrewCabin() {
         for (int k = 0; k < 5; k++) {
             float a = (float)k * 1.256637f;
             glPushMatrix();
-            glColor3f(0.10f, 0.11f, 0.12f);
+            glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
             glTranslatef(cos(a) * 0.16f, 0.015f, sin(a) * 0.16f);
             drawSphere(0.025f, 6, 5);
             glPopMatrix();
             glPushMatrix();
-            glColor3f(0.13f, 0.14f, 0.15f);
+            glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
             glTranslatef(cos(a) * 0.08f, 0.03f, sin(a) * 0.08f);
             glRotatef(k * 72.0f, 0, 1, 0);
             glScalef(0.05f, 0.02f, 0.16f);
@@ -3213,23 +3314,32 @@ void drawCrewCabin() {
             glPopMatrix();
         }
         glPushMatrix();
-        glColor3f(0.12f, 0.13f, 0.15f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glTranslatef(0.0f, 0.10f, 0.0f);
         glRotatef(-90, 1, 0, 0);
         drawCylinder(0.025f, 0.10f, 8);
         glPopMatrix();
         glPushMatrix();
-        glColor3f(0.16f, 0.20f, 0.24f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glTranslatef(0.0f, 0.14f, 0.0f);
         glScalef(0.28f, 0.04f, 0.26f);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glColor3f(0.16f, 0.20f, 0.24f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glTranslatef(0.0f, 0.26f, -0.10f);
         glScalef(0.26f, 0.24f, 0.035f);
         drawCube(1.0f);
         glPopMatrix();
+        // glowing trim strip along the seat-back top edge
+        cabGlow(COL_STRIP);
+        glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
+        glPushMatrix();
+        glTranslatef(0.0f, 0.386f, -0.117f);
+        glScalef(0.22f, 0.016f, 0.014f);
+        drawCube(1.0f);
+        glPopMatrix();
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
         glPopMatrix();
     };
 
@@ -3370,13 +3480,13 @@ void drawCrewCabin() {
             glEnd();
         };
         // faint blue backlight so the monitor glows instead of pitch black
-        glColor4f(0.03f, 0.11f, 0.20f, 1.0f);
+        glColor4f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2], 1.0f);
         sideQuad(-0.28f, -0.125f, 0.28f, 0.125f, -0.0005f);
         if (thema == 0) {                       // DEPTH + SPEED instruments
             for (int g = 0; g < 2; g++) {
                 float gx = -0.115f + g * 0.23f;
                 float gy = 0.015f;
-                glColor3f(0.30f, 0.80f, 0.95f);
+                glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
                 for (int tk = 0; tk <= 10; tk++) {
                     float a = -PI + tk * 0.1f * PI;
                     drawLine3D(gx + sin(a) * 0.070f, gy + cos(a) * 0.070f, 0.0f,
@@ -3390,23 +3500,23 @@ void drawCrewCabin() {
             if (sF > 1.0f) sF = 1.0f;
             float dA = -PI + dF * PI;
             float sA = -PI + sF * PI;
-            glColor3f(0.95f, 0.35f, 0.20f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             drawLine3D(-0.115f, 0.015f, 0.0f, -0.115f + sin(dA) * 0.075f, 0.015f + cos(dA) * 0.075f, 0.0f);
-            glColor3f(0.20f, 0.95f, 0.55f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             drawLine3D(0.115f, 0.015f, 0.0f, 0.115f + sin(sA) * 0.075f, 0.015f + cos(sA) * 0.075f, 0.0f);
             // filled dial hubs so gauges read at distance
-            glColor3f(0.90f, 0.35f, 0.20f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             sideQuad(-0.125f, 0.005f, -0.105f, 0.025f, 0.0008f);
-            glColor3f(0.20f, 0.90f, 0.50f);
+            glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             sideQuad(0.105f, 0.005f, 0.125f, 0.025f, 0.0008f);
-            glColor3f(0.30f, 0.90f, 1.0f);
+            glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             // DEPTH / SPEED tags as vector ticks under each dial
             drawLine3D(-0.160f, -0.055f, 0.0f, -0.070f, -0.055f, 0.0f);
             drawLine3D(0.070f, -0.055f, 0.0f, 0.160f, -0.055f, 0.0f);
             // digital readout bars under the needles
             float dBars = dF * 5.0f;
             float sBars = sF * 5.0f;
-            glColor3f(0.75f, 0.85f, 0.90f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             for (int dbi = 0; dbi < 5; dbi++) {
                 if ((float)dbi < dBars)
                     sideQuad(-0.175f + dbi * 0.022f, -0.095f,
@@ -3416,24 +3526,24 @@ void drawCrewCabin() {
                              0.072f + dbi * 0.022f, -0.075f, 0.0008f);
             }
         } else {                                // SENSOR / SYSTEMS status
-            glColor3f(0.30f, 0.90f, 1.0f);
+            glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
             // SYSTEMS tag as vector ticks
             drawLine3D(-0.28f, 0.115f, 0.0f, -0.16f, 0.115f, 0.0f);
             // 4 status rows as vector ticks (length shimmers = OK flicker)
-            glColor3f(0.45f, 0.85f, 0.95f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             for (int r2 = 0; r2 < 4; r2++) {
                 float ry = 0.065f - r2 * 0.042f;
                 float rl = 0.10f + noise01(r2, (int)(introTimer * 0.02f), 73) * 0.06f;
                 sideQuad(-0.28f, ry - 0.006f, -0.28f + rl, ry + 0.006f, 0.0008f);
             }
             // animated core-temp bars (filled so they read at distance)
-            glColor3f(0.20f, 0.95f, 0.50f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             for (int tg = 0; tg < 8; tg++) {
                 float tv = 0.20f + 0.65f * noise01(tg, (int)(introTimer * 0.02f), 71);
                 sideQuad(-0.28f + tg * 0.045f - 0.012f, -0.09f,
                          -0.28f + tg * 0.045f + 0.012f, -0.09f + tv * 0.06f, 0.0008f);
             }
-            glColor3f(0.35f, 0.70f, 0.85f);
+            glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
             drawLine3D(-0.28f, -0.115f, 0.0f, -0.14f, -0.115f, 0.0f);
         }
         glDisable(GL_BLEND);
@@ -3442,27 +3552,27 @@ void drawCrewCabin() {
         for (int k = 0; k < 2; k++) {
             glPushMatrix();
             glTranslatef(cx - 0.30f + k * 0.60f, -0.36f, cz + dir * 0.02f);
-            glColor3f(0.14f, 0.16f, 0.19f);
+            glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
             glScalef(0.12f, 0.36f, 0.30f);
             drawCube(1.0f);
             glPopMatrix();
         }
         glPushMatrix();
         glTranslatef(cx, -0.14f, cz + dir * 0.06f);
-        glColor3f(0.24f, 0.28f, 0.32f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.72f, 0.03f, 0.32f);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
         glTranslatef(cx, 0.06f, cz + dir * 0.24f);
-        glColor3f(0.09f, 0.10f, 0.12f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.60f, 0.28f, 0.04f);
         drawCube(1.0f);
         glPopMatrix();
         glDisable(GL_LIGHTING);
         glPushMatrix();
         glTranslatef(cx, 0.07f, cz + dir * 0.245f);
-        glColor3f(0.02f, 0.03f, 0.05f);
+        glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
         glScalef(0.56f, 0.25f, 0.015f);
         drawCube(1.0f);
         glPopMatrix();
@@ -3474,17 +3584,18 @@ void drawCrewCabin() {
         glEnable(GL_LIGHTING);
         glPushMatrix();
         glTranslatef(cx, -0.30f, cz + dir * 0.12f);
-        glColor3f(0.08f, 0.09f, 0.10f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.56f, 0.02f, 0.10f);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glColor3f(0.75f, 0.70f, 0.45f);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
         glTranslatef(cx - 0.28f, -0.10f, cz + dir * 0.02f);
         glRotatef(-90, 1, 0, 0);
         drawCylinder(0.028f, 0.06f, 8);
         glPopMatrix();
     };
+    cabSurface(COL_PANEL, SPEC_CONS, 60);
     sideConsole(-0.05f, -1.02f, -1.0f, 0);   // depth / speed station (port)
     sideConsole(-0.05f,  1.02f,  1.0f, 1);   // sensor / systems station (starboard)
     chair(-0.05f, -0.76f, 180.0f);
@@ -3495,24 +3606,26 @@ void drawCrewCabin() {
     // ------------------------------------------------------------------
     // 8. AFT BULKHEAD - round hatch, cabinets, nav display, standing officer
     // ------------------------------------------------------------------
+    cabSurface(COL_HULL, SPEC_ALL, 40);
     glPushMatrix();
     glTranslatef(CR_XA, 0.18f, 0.0f);
-    glColor3f(0.34f, 0.37f, 0.41f);
+    glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
     glScalef(0.08f, 1.42f, 2.46f);
     drawCube(1.0f);
     glPopMatrix();
 
+    cabSurface(COL_PANEL, SPEC_CONS, 60);
     for (int s = -1; s <= 1; s += 2) {
         glPushMatrix();
         glTranslatef(CR_XA + 0.12f, 0.18f, s * 0.74f);
-        glColor3f(0.14f, 0.18f, 0.24f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
         glScalef(0.22f, 1.15f, 0.30f);
         drawCube(1.0f);
         glPopMatrix();
         for (int d2 = 0; d2 < 2; d2++) {
             glPushMatrix();
             glTranslatef(CR_XA + 0.14f, 0.20f, s * 0.74f + (d2 ? 0.09f : -0.09f));
-            glColor3f(0.10f, 0.12f, 0.16f);
+            glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
             glScalef(0.03f, 0.90f, 0.01f);
             drawCube(1.0f);
             glPopMatrix();
@@ -3522,7 +3635,7 @@ void drawCrewCabin() {
     glDisable(GL_LIGHTING);
     glPushMatrix();
     glTranslatef(CR_XA + 0.02f, 0.60f, -0.55f);
-    glColor3f(0.02f, 0.04f, 0.06f);
+    glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
     glScalef(0.015f, 0.16f, 0.24f);
     drawCube(1.0f);
     glPopMatrix();
@@ -3530,14 +3643,14 @@ void drawCrewCabin() {
     glPushMatrix();
     glTranslatef(CR_XA + 0.045f, 0.60f, -0.55f);
     // opaque backlight so it reads as a lit screen against the bulkhead
-    glColor3f(0.03f, 0.11f, 0.20f);
+    glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
     glBegin(GL_QUADS);
     glVertex3f(-0.001f, -0.075f, -0.115f);
     glVertex3f(-0.001f, -0.075f, 0.115f);
     glVertex3f(-0.001f, 0.075f, 0.115f);
     glVertex3f(-0.001f, 0.075f, -0.115f);
     glEnd();
-    glColor3f(0.30f, 0.90f, 0.60f);
+    glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
     for (int g = 0; g <= 3; g++) {
         float gy = -0.07f + g * 0.046f;
         drawLine3D(0.0f, gy, -0.11f, 0.0f, gy, 0.11f);
@@ -3549,7 +3662,7 @@ void drawCrewCabin() {
     float hd = sub.yaw * 0.0174533f;
     drawLine3D(0.0f, 0.0f, 0.0f, 0.0f, sin(hd) * 0.06f, cos(hd) * 0.06f);
     drawLine3D(0.0f, 0.0f, -0.015f, 0.0f, 0.0f, -0.035f);
-    glColor3f(0.90f, 0.45f, 0.25f);
+    glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
     for (int wp = 0; wp < 2; wp++) {
         float wx = -0.04f + wp * 0.07f;
         float wz = -0.05f + (noise01(wp, 2, 51) - 0.5f) * 0.06f;
@@ -3561,33 +3674,34 @@ void drawCrewCabin() {
             drawLine3D(0.0f, wx + ax, wz + az, 0.0f, wx + bx, wz + bz);
         }
     }
-    glColor3f(0.40f, 0.90f, 1.0f);
+    glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
     drawText3D(CR_XA + 0.055f, 0.70f, -0.60f, "NAV PLAN", GLUT_BITMAP_HELVETICA_10);
     glPopMatrix();
     glEnable(GL_LIGHTING);
 
     glPushMatrix();
     glTranslatef(-1.44f, -0.46f, 0.98f);
-    glColor3f(0.65f, 0.12f, 0.13f);
+    glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
     glScalef(0.07f, 0.14f, 0.07f);
     drawCube(1.0f);
     glPopMatrix();
     glPushMatrix();
     glTranslatef(-1.42f, -0.47f, -1.00f);
-    glColor3f(0.35f, 0.30f, 0.20f);
+    glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
     glScalef(0.16f, 0.10f, 0.14f);
     drawCube(1.0f);
     glPopMatrix();
 
     // round dogged hatch
+    cabSurface(COL_TRIM, SPEC_ALL, 40);
     glPushMatrix();
     glTranslatef(CR_XA + 0.02f, 0.12f, 0.0f);
     glRotatef(90, 0, 1, 0);
-    glColor3f(0.22f, 0.24f, 0.27f);
+    glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
     drawCylinder(0.34f, 0.05f, 26);
-    glColor3f(0.34f, 0.36f, 0.39f);
+    glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
     drawDisk(0.0f, 0.34f, 26);
-    glColor3f(0.16f, 0.17f, 0.19f);
+    glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
     drawDisk(0.12f, 0.30f, 24);
     glPopMatrix();
     glPushMatrix();
@@ -3596,12 +3710,12 @@ void drawCrewCabin() {
         glPushMatrix();
         glRotatef((float)h * 60.0f, 1, 0, 0);
         glTranslatef(0.0f, 0.16f, 0.0f);
-        glColor3f(0.22f, 0.24f, 0.26f);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
         glScalef(0.04f, 0.30f, 0.03f);
         drawCube(1.0f);
         glPopMatrix();
     }
-    glColor3f(0.30f, 0.32f, 0.35f);
+    glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
     drawSphere(0.045f, 8, 6);
     glPopMatrix();
     for (int dg = 0; dg < 6; dg++) {
@@ -3609,7 +3723,7 @@ void drawCrewCabin() {
         glPushMatrix();
         glTranslatef(CR_XA - 0.005f, 0.12f + sin(a) * 0.30f, cos(a) * 0.30f);
         glRotatef((float)dg * 60.0f, 1, 0, 0);
-        glColor3f(0.12f, 0.13f, 0.15f);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
         glScalef(0.03f, 0.09f, 0.03f);
         drawCube(1.0f);
         glPopMatrix();
