@@ -79,6 +79,25 @@ struct Camera {
 // Held keys for smooth first-person walking in the crew cabin
 bool walkKeys[256] = { false };
 
+// Crew-quarters door (shared door state + animation; 0 = closed, 1 = fully open).
+// All values are in interior LOCAL (pre-scale) units - the scene is scaled by
+// INT_SX/INT_SY/INT_SZ, so 1 local metre ~1.7/1.3/1.5 world.
+const float CREW_HATCH_X   = -1.85f;  // aft bulkhead wall / door centre (matches CR_XA)
+const float CREW_HALF      =  0.34f;  // half-width (z) of the walkable doorway opening
+const float CREW_FAR_WALL  = -4.60f;  // far wall cap of the crew quarters tube
+const float CREW_X_FAR     = -4.50f;  // aft walk limit (just short of the far wall)
+static float hatchOpenT    = 0.0f;    // animated swing: 0 closed ... 1 fully open
+static bool  hatchDirOpen  = false;   // current open/close target
+
+// door-open button mounted on the bulkhead beside the door (local coords)
+const float CABIN_BTN_X = -1.85f;     // sits on the aft bulkhead face
+const float CABIN_BTN_Y =  0.76f;     // reach height on the header panel
+const float CABIN_BTN_Z =  0.20f;     // beside the doorway (starboard of centre)
+
+static bool cabinNearHatch() {
+    return (fabs(cam.freeX - CREW_HATCH_X) < 1.20f && fabs(cam.freeZ) < 0.55f);
+}
+
 // Mission System
 enum Mission { MISSION_DIVE = 0, MISSION_EXPLORE, MISSION_NAVIGATE, MISSION_OBSERVE, MISSION_RETURN, MISSION_COUNT };
 Mission currentMission = MISSION_DIVE;
@@ -483,7 +502,7 @@ void initSubmarine() {
     sub.yaw = 0; sub.pitch = 0; sub.roll = 0;
     sub.speed = 0; sub.targetSpeed = 0;
     sub.propellerAngle = 0;
-    sub.headlightsOn = false;
+    sub.headlightsOn = true;
     sub.depth = 0;
     sub.descentRate = 0;
 }
@@ -721,234 +740,411 @@ void initEnvironment() {
 // DRAW SUBMARINE
 // ============================================================
 void drawSubmarineBody() {
-    float hullR = 1.35f;
-    float hullDark[3] = { 0.19f, 0.20f, 0.22f };
-    float hullSide[3] = { 0.22f, 0.23f, 0.25f };
-    float hullTopC[3] = { 0.26f, 0.27f, 0.29f };
-    float hullRed[3] = { 0.72f, 0.14f, 0.14f };
+    // ============================================================
+    // Submarine hull (visual shell only), fat and round like a real sub:
+    // a hemispherical bow cap, constant-radius midbody and a long gradual
+    // boat-tail stern. World length:width ~5.5:1. Built in draw-space x,
+    // scaled by the outer transform in drawFullSubmarine.
+    // Collision dimensions, camera and animation code are untouched.
+    // ============================================================
+    const float R  = 1.15f;    // midbody radius (draw units)
+    const float XB = 3.00f;    // bow seam  (hemisphere cap starts here)
+    const float XS = -1.60f;   // stern seam (boat-tail starts here)
+    const float XF = 4.19f;    // bow tip  (+X)
+    const float XT = -4.19f;   // stern tip (-X)
 
-    bool useCamo = texHull != 0;
-    if (useCamo) { glEnable(GL_TEXTURE_2D); glBindTexture(GL_TEXTURE_2D, texHull); glColor3f(1,1,1); }
-    glPushMatrix();
-    if (!useCamo) glColor3fv(hullDark);
-    glRotatef(90, 0, 1, 0);
-    glTranslatef(0, 0, -2.5f);
-    GLUquadric* hullQ = gluNewQuadric();
-    gluQuadricNormals(hullQ, GLU_SMOOTH);
-    if (useCamo) gluQuadricTexture(hullQ, GL_TRUE);
-    gluCylinder(hullQ, hullR, hullR, 5.0f, 48, 6);
-    gluDeleteQuadric(hullQ);
-    glPopMatrix();
+    // Radius of the flat circular nose face that forms the bow window hole:
+    // the bow hemisphere is cut off at this radius so the mesh ends in a real
+    // circular opening instead of tapering to a point.
+    const float WIN_R = 0.62f;
+    auto hullRadius = [&](float x) {
+        if (x > XB) {   // round hemispherical submarine bow (not fishy)
+            float u = (x - XB) / (XF - XB);
+            if (u > 1.0f) u = 1.0f;
+            float r = R * sqrtf(1.0f - u * u);
+            if (r < WIN_R) r = WIN_R;
+            return r;
+        }
+        if (x < XS) {   // long gradual boat-tail stern
+            float u = (x - XT) / (XS - XT);
+            return 0.52f + (R - 0.52f) * (0.5f - 0.5f * cosf((float)PI * u));
+        }
+        return R;       // constant-radius midbody
+    };
 
-    glPushMatrix();
-    glTranslatef(2.85f, 0, 0);
-    if (!useCamo) glColor3fv(hullDark);
-    else glColor3f(1,1,1);
-    glScalef(1.0f, 0.98f, 0.96f);
-    drawSphere(hullR, 24, 18);
-    glPopMatrix();
+    // Real sub hull paint: the body fades to near-black as the sub dives, so
+    // it reads like actual dark steel underwater. The vertical colour gradient
+    // is preserved - only the overall brightness scales with depth.
+    const float depthDark = 1.0f - 0.82f * diveTransition;
 
-    glPushMatrix();
-    glTranslatef(0.8f, hullR - 0.20f, 0);
-    glColor3fv(hullTopC);
-    glScalef(3.4f, 0.20f, 0.45f);
-    drawSphere(0.5f, 24, 12);
-    glPopMatrix();
+    // vertical counter-shading: dark top -> grey sides -> light underside
+    auto hullColor = [&](float y, float rad, float out[3]) {
+        if (rad < 0.001f) rad = 0.001f;
+        float yN = y / rad;
+        if (yN > 1.0f) yN = 1.0f; else if (yN < -1.0f) yN = -1.0f;
+        const float topC[3]  = { 0.30f, 0.37f, 0.39f };
+        const float sideC[3] = { 0.42f, 0.52f, 0.52f };
+        const float botC[3]  = { 0.56f, 0.70f, 0.66f };
+        if (yN >= 0.0f) {
+            out[0] = sideC[0] + (topC[0] - sideC[0]) * yN;
+            out[1] = sideC[1] + (topC[1] - sideC[1]) * yN;
+            out[2] = sideC[2] + (topC[2] - sideC[2]) * yN;
+        } else {
+            float k = -yN;
+            out[0] = botC[0] + (sideC[0] - botC[0]) * k;
+            out[1] = botC[1] + (sideC[1] - botC[1]) * k;
+            out[2] = botC[2] + (sideC[2] - botC[2]) * k;
+        }
+        out[0] *= depthDark;
+        out[1] *= depthDark;
+        out[2] *= depthDark;
+    };
 
-    glPushMatrix();
-    glTranslatef(-2.5f, 0, 0);
-    glRotatef(-90, 0, 1, 0);
-    if (!useCamo) glColor3fv(hullDark);
-    else glColor3f(1,1,1);
-    GLUquadric* taperQ = gluNewQuadric();
-    gluQuadricNormals(taperQ, GLU_SMOOTH);
-    if (useCamo) gluQuadricTexture(taperQ, GL_TRUE);
-    gluCylinder(taperQ, hullR, 0.30f, 1.7f, 22, 3);
-    gluDeleteQuadric(taperQ);
-    glPopMatrix();
-    if (useCamo) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
-    glPushMatrix();
-    glTranslatef(0.0f, -hullR + 0.28f, 0);
-    glColor3fv(hullRed);
-    glScalef(6.8f, 0.24f, 1.12f);
-    drawSphere(0.52f, 24, 12);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(0.0f, -hullR * 0.88f, 0);
-    glColor3fv(hullRed);
-    glScalef(6.2f, 0.08f, 1.00f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix(); glTranslatef(3.55f, -hullR * 0.55f, 0); glColor3fv(hullRed); glScalef(0.55f, 0.28f, 0.55f); drawSphere(0.42f, 16, 12); glPopMatrix();
-    glPushMatrix(); glTranslatef(0.35f, hullR - 0.06f, 0); glColor3f(0.08f,0.09f,0.10f); glScalef(4.85f, 0.06f, 0.22f); drawCube(1.0f); glPopMatrix();
-    glPushMatrix(); glTranslatef(0.35f, hullR - 0.02f, 0); glColor3f(0.04f,0.05f,0.06f); glScalef(4.85f, 0.015f, 0.16f); drawCube(1.0f); glPopMatrix();
+    // glossy wet-metal material; per-vertex colour drives the diffuse term
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
+    GLfloat hAmb[4]  = { 0.10f, 0.13f, 0.13f, 1.0f };
+    GLfloat hSpec[4] = { 0.85f, 0.90f, 0.90f, 1.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, hAmb);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, hSpec);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 90.0f);
+
+    // ---- hull surface mesh: smooth-shaded quads with the vertical
+    //      colour gradient baked into each vertex ----
+    const int RINGS = 24;
+    const int NSEG  = 72;
+    float xPrev = XT, rPrev = hullRadius(xPrev);
+    for (int s = 1; s <= NSEG; s++) {
+        float xCur = XT + (XF - XT) * ((float)s / (float)NSEG);
+        float rCur = hullRadius(xCur);
+        glBegin(GL_QUADS);
+        for (int j = 0; j < RINGS; j++) {
+            float t0 = (float)j           / (float)RINGS * 2.0f * (float)PI;
+            float t1 = (float)(j + 1)     / (float)RINGS * 2.0f * (float)PI;
+            float n0y = sinf(t0), n0z = cosf(t0);
+            float n1y = sinf(t1), n1z = cosf(t1);
+            float yA = rPrev * n0y, zA = rPrev * n0z;
+            float yB = rCur  * n0y, zB = rCur  * n0z;
+            float yC = rCur  * n1y, zC = rCur  * n1z;
+            float yD = rPrev * n1y, zD = rPrev * n1z;
+            float cA[3], cB[3], cC[3], cD[3];
+            hullColor(yA, rPrev, cA);
+            hullColor(yB, rCur,  cB);
+            hullColor(yC, rCur,  cC);
+            hullColor(yD, rPrev, cD);
+            glNormal3f(0.0f, n0y, n0z); glColor3f(cA[0], cA[1], cA[2]); glVertex3f(xPrev, yA, zA);
+            glNormal3f(0.0f, n0y, n0z); glColor3f(cB[0], cB[1], cB[2]); glVertex3f(xCur,  yB, zB);
+            glNormal3f(0.0f, n1y, n1z); glColor3f(cC[0], cC[1], cC[2]); glVertex3f(xCur,  yC, zC);
+            glNormal3f(0.0f, n1y, n1z); glColor3f(cD[0], cD[1], cD[2]); glVertex3f(xPrev, yD, zD);
+        }
+        glEnd();
+        xPrev = xCur;
+        rPrev = rCur;
+    }
+
+    // ---- exterior windows: 3 rectangular side windows per side plus the big
+    //      round bow window in the nose, mirroring the lit cabin interior ----
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+    GLfloat wAmb[4]  = { 0.08f, 0.11f, 0.14f, 1.0f };
+    GLfloat wSpec[4] = { 0.35f, 0.45f, 0.60f, 1.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, wAmb);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, wSpec);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 60.0f);
+    GLfloat wEmit[4] = { 0.03f, 0.06f, 0.10f, 1.0f };
+    GLfloat zEmit[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+
+    // ---- panoramic bow viewport like FRONT VIEW reference: wide horizontal
+    //      letterbox recessed FLUSH into the bow face, thin frame, no
+    //      forward balcony — window plane is Y-Z facing +X ----
+    {
+        const float hw = 0.52f;
+        const float hh = 0.20f;
+        const float fr = 0.042f;
+        const float y0 = 0.08f;
+        const float xFace = XF - 0.012f;
+        glDisable(GL_LIGHTING);
+        glColor3f(0.045f, 0.07f, 0.10f);
+        glBegin(GL_QUADS);
+        glVertex3f(xFace-0.02f, y0-hh, -hw);
+        glVertex3f(xFace-0.02f, y0+hh, -hw);
+        glVertex3f(xFace-0.02f, y0+hh,  hw);
+        glVertex3f(xFace-0.02f, y0-hh,  hw);
+        glEnd();
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glBegin(GL_QUADS);
+        glColor4f(0.32f,0.64f,0.90f,0.42f); glVertex3f(xFace, y0-hh, -hw);
+        glColor4f(0.58f,0.84f,1.0f,0.28f); glVertex3f(xFace, y0+hh, -hw);
+        glColor4f(0.58f,0.84f,1.0f,0.28f); glVertex3f(xFace, y0+hh,  hw);
+        glColor4f(0.32f,0.64f,0.90f,0.42f); glVertex3f(xFace, y0-hh,  hw);
+        glEnd();
+        glColor4f(0.72f,0.90f,1.0f,0.09f);
+        glBegin(GL_QUADS);
+        glVertex3f(xFace+0.001f, y0-hh*0.35f, -hw*0.96f);
+        glVertex3f(xFace+0.001f, y0+hh*0.55f, -hw*0.96f);
+        glVertex3f(xFace+0.001f, y0+hh*0.55f,  hw*0.96f);
+        glVertex3f(xFace+0.001f, y0-hh*0.35f,  hw*0.96f);
+        glEnd();
+        glDisable(GL_BLEND);
+        glEnable(GL_LIGHTING);
+        glColor3f(0.18f*depthDark,0.20f*depthDark,0.22f*depthDark);
+        glPushMatrix(); glTranslatef(xFace+0.006f, y0+hh+fr*0.5f, 0.0f); glScalef(0.014f, fr, hw*2+fr*2.0f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(xFace+0.006f, y0-hh-fr*0.5f, 0.0f); glScalef(0.014f, fr, hw*2+fr*2.0f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(xFace+0.006f, y0,  hw+fr*0.5f); glScalef(0.014f, hh*2+fr*2.0f, fr); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(xFace+0.006f, y0, -hw-fr*0.5f); glScalef(0.014f, hh*2+fr*2.0f, fr); drawCube(1.0f); glPopMatrix();
+    }
+
+    // ---- two headlights like FRONT VIEW ref: small flush lenses set INTO
+    //      the lower bow curvature, well below the window, clearly separate
+    //      left/right with a dark hull gap between them ----
+    {
+        GLfloat lampEmit[4] = { 0.50f, 0.70f, 1.0f, 1.0f };
+        for (int hz = -1; hz <= 1; hz += 2) {
+            glColor3f(0.10f*depthDark,0.12f*depthDark,0.13f*depthDark);
+            glPushMatrix();
+            glTranslatef(3.88f, -0.52f, hz * 0.58f);
+            glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+            drawDisk(0.0f, 0.075f, 18);
+            glPopMatrix();
+            glPushMatrix();
+            glTranslatef(3.89f, -0.52f, hz * 0.58f);
+            glRotatef(90.0f, 0.0f, 1.0f, 0.0f);
+            drawCylinder(0.060f, 0.012f, 14);
+            glPopMatrix();
+            glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, lampEmit);
+            glColor3f(0.88f, 0.93f, 1.0f);
+            glPushMatrix();
+            glTranslatef(3.905f, -0.52f, hz * 0.58f);
+            glScalef(0.050f, 0.050f, 0.050f);
+            drawSphere(1.0f, 12, 8);
+            glPopMatrix();
+        }
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, zEmit);
+    }
+
+    // ---- small glowing deck lights along the top ridge of the midbody,
+    //      clear of the sail: plain emissive domes (no GL_LIGHT behind) ----
+    {
+        GLfloat deckEmit[4] = { 0.45f, 0.68f, 1.0f, 1.0f };
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, deckEmit);
+        glColor3f(0.62f, 0.80f, 1.0f);
+        const float deckX[3] = { 0.55f, -0.35f, -1.15f };
+        for (int i = 0; i < 3; i++) {
+            glPushMatrix();
+            glTranslatef(deckX[i], R + 0.012f, 0.0f);
+            drawSphere(0.075f, 12, 8);
+            glPopMatrix();
+        }
+        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, zEmit);
+    }
+
+    // 3 rectangular windows per side, flush with the hull curvature
+    {
+        const float wx[3] = { -0.15f, 0.70f, 1.55f };
+        const float halfLen = 0.31f;
+        const float phiC = asinf(0.40f / R);
+        const float dPhi = 0.14f;
+        const int NX = 6, NP = 6, EDG = 8;
+        for (int s = -1; s <= 1; s += 2) {
+            for (int i = 0; i < 3; i++) {
+                const float xLo = wx[i] - halfLen, xHi = wx[i] + halfLen;
+                const float phLo = phiC - dPhi, phHi = phiC + dPhi;
+                glColor3f(0.10f, 0.15f, 0.20f);           // dark glass
+                glBegin(GL_QUADS);
+                for (int ix = 0; ix < NX; ix++)
+                    for (int ip = 0; ip < NP; ip++) {
+                        float xa = xLo + (xHi - xLo) * ((float)ix / NX);
+                        float xb = xLo + (xHi - xLo) * ((float)(ix + 1) / NX);
+                        float pa = phLo + (phHi - phLo) * ((float)ip / NP);
+                        float pb = phLo + (phHi - phLo) * ((float)(ip + 1) / NP);
+                        float rq = R + 0.004f;
+                        glNormal3f(0.0f, sinf(pa), s * cosf(pa));
+                        glVertex3f(xa, rq * sinf(pa), s * rq * cosf(pa));
+                        glNormal3f(0.0f, sinf(pb), s * cosf(pb));
+                        glVertex3f(xa, rq * sinf(pb), s * rq * cosf(pb));
+                        glVertex3f(xb, rq * sinf(pb), s * rq * cosf(pb));
+                        glNormal3f(0.0f, sinf(pa), s * cosf(pa));
+                        glVertex3f(xb, rq * sinf(pa), s * rq * cosf(pa));
+                    }
+                glEnd();
+                // thin frame line around the window
+                glDisable(GL_LIGHTING);
+                glColor3f(0.42f, 0.52f, 0.52f);
+                glBegin(GL_LINE_STRIP);
+                for (int k = 0; k <= EDG; k++) {
+                    float pv = phLo + (phHi - phLo) * ((float)k / EDG);
+                    float rq = R + 0.006f;
+                    glVertex3f(xLo, rq * sinf(pv), s * rq * cosf(pv));
+                }
+                glEnd();
+                glBegin(GL_LINE_STRIP);
+                for (int k = 0; k <= EDG; k++) {
+                    float pv = phLo + (phHi - phLo) * ((float)k / EDG);
+                    float rq = R + 0.006f;
+                    glVertex3f(xHi, rq * sinf(pv), s * rq * cosf(pv));
+                }
+                glEnd();
+                glBegin(GL_LINE_STRIP);
+                for (int k = 0; k <= EDG; k++) {
+                    float xx = xLo + (xHi - xLo) * ((float)k / EDG);
+                    float rq = R + 0.006f;
+                    glVertex3f(xx, rq * sinf(phLo), s * rq * cosf(phLo));
+                }
+                glEnd();
+                glBegin(GL_LINE_STRIP);
+                for (int k = 0; k <= EDG; k++) {
+                    float xx = xLo + (xHi - xLo) * ((float)k / EDG);
+                    float rq = R + 0.006f;
+                    glVertex3f(xx, rq * sinf(phHi), s * rq * cosf(phHi));
+                }
+                glEnd();
+                glEnable(GL_LIGHTING);
+            }
+        }
+    }
+
+    // restore the hull material defaults before the seams
+    glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, zEmit);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, hAmb);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, hSpec);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 90.0f);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
+
+    // ---- two raised longitudinal seam strips (port + starboard on each):
+    //      Seam 1 = polished highlight line on the upper hull shoulder,
+    //      Seam 2 = thinner duller line where the hull meets the underside.
+    //      Each strip is a thin band just proud of the hull surface that runs
+    //      the full midbody, fading out at the bow/stern taper seams so it
+    //      never wraps onto the curved bow tip or onto the sail.
+    auto drawSeam = [&](float yN, float bandY, float rise, float portSgn) {
+        float tA = asinf(yN - bandY * 0.5f);
+        float tB = asinf(yN + bandY * 0.5f);
+        float sa = sinf(tA), ca = cosf(tA);
+        float sb = sinf(tB), cb = cosf(tB);
+        glBegin(GL_QUAD_STRIP);
+        for (int i = 0; i <= 60; i++) {
+            float x = XS + (XB - XS) * ((float)i / 60.0f);
+            float r = hullRadius(x);
+            float fade = 1.0f;
+            float edge = 0.30f;
+            if (x - XS < edge) fade = (x - XS) / edge;
+            if (XB - x < edge) fade = (XB - x) / edge;
+            if (fade < 0.0f) fade = 0.0f;
+            float rad = r + rise * fade;
+            glNormal3f(0.0f, sa, portSgn * ca);
+            glVertex3f(x, rad * sa, portSgn * rad * ca);
+            glNormal3f(0.0f, sb, portSgn * cb);
+            glVertex3f(x, rad * sb, portSgn * rad * cb);
+        }
+        glEnd();
+    };
+
+    // Seam 1: bright polished longitudinal seam, upper-third of the hull
+    glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
+    {
+        float yN1 = 0.55f, band1 = 0.06f, rise1 = 0.015f;
+        float amb1[4] = { 0.27f, 0.28f, 0.27f, 1.0f };
+        float spc1[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        glColor3f(0.90f * depthDark, 0.93f * depthDark, 0.90f * depthDark);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, amb1);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spc1);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 120.0f);
+        drawSeam(yN1, band1, rise1, -1.0f);
+        drawSeam(yN1, band1, rise1,  1.0f);
+    }
+    // Seam 2: thinner lower seam where the hull curves into the underside
+    {
+        float yN2 = -0.60f, band2 = 0.045f, rise2 = 0.010f;
+        float amb2[4] = { 0.15f, 0.165f, 0.165f, 1.0f };
+        float spc2[4] = { 0.35f, 0.38f, 0.38f, 1.0f };
+        glColor3f(0.50f * depthDark, 0.55f * depthDark, 0.55f * depthDark);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, amb2);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, spc2);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 60.0f);
+        drawSeam(yN2, band2, rise2, -1.0f);
+        drawSeam(yN2, band2, rise2,  1.0f);
+    }
+    // restore the standard diffuse-drives-colour state for the rest of the body
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+
+    // thin diagonal hatch outline near the bow
     glDisable(GL_LIGHTING);
-    for(int k=0;k<4;k++){ glPushMatrix(); glTranslatef(1.75f- k*0.22f, 0.12f, hullR - 0.15f); glColor3f(0.92f,0.92f,0.92f); glScalef(0.28f,0.025f,0.01f); drawCube(1.0f); glPopMatrix(); glPushMatrix(); glTranslatef(1.75f- k*0.22f, 0.12f,-(hullR - 0.15f)); glScalef(0.28f,0.025f,0.01f); drawCube(1.0f); glPopMatrix(); }
-    for(int k=0;k<5;k++){ glPushMatrix(); glTranslatef(-1.15f- k*0.20f, 0.42f, hullR - 0.15f); glColor3f(0.92f,0.92f,0.92f); glScalef(0.18f,0.02f,0.01f); drawCube(1.0f); glPopMatrix(); glPushMatrix(); glTranslatef(-1.15f- k*0.20f, 0.42f,-(hullR - 0.15f)); glScalef(0.18f,0.02f,0.01f); drawCube(1.0f); glPopMatrix(); }
+    glColor3f(0.10f, 0.12f, 0.13f);
+    glBegin(GL_LINES);
+    glVertex3f(3.30f, R * 0.38f, R * 0.88f);
+    glVertex3f(3.62f, R * 0.30f, R * 0.80f);
+    glEnd();
     glEnable(GL_LIGHTING);
 
-    glColor3f(0.10f, 0.10f, 0.11f);
-    for (int i = 0; i < 3; i++) {
-        glPushMatrix();
-        glTranslatef(1.2f - i * 1.1f, 0, 0);
-        glRotatef(90, 0, 1, 0);
-        drawTorus(0.008f, hullR + 0.004f, 6, 36);
-        glPopMatrix();
-    }
-
+    // ---- low streamlined sail: capsule footprint, faired into the deck ----
     glPushMatrix();
-    glTranslatef(0.9f, hullR - 0.03f, 0);
-    glColor3f(0.12f, 0.12f, 0.13f);
-    glScalef(1.4f, 0.05f, 0.34f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-1.1f, hullR - 0.03f, 0);
-    glColor3f(0.12f, 0.12f, 0.13f);
-    glScalef(0.9f, 0.05f, 0.30f);
-    drawCube(1.0f);
+    glColor3f(0.30f * depthDark, 0.37f * depthDark, 0.39f * depthDark);
+    glTranslatef(1.20f, R + 0.14f, 0.0f);
+    glScalef(0.62f, 0.28f, 0.26f);
+    drawSphere(1.0f, 24, 14);
     glPopMatrix();
 
-    for (int s = -1; s <= 1; s += 2) {
-        float zside = s * hullR;
-        glPushMatrix();
-        glTranslatef(-0.2f, 0.05f, zside);
-        if (s < 0) glRotatef(180, 0, 1, 0);
-        glColor3f(0.75f, 0.72f, 0.60f);
-        glScalef(0.55f, 0.22f, 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(1.15f, 0.18f, zside * 0.99f);
-        if (s < 0) glRotatef(180, 0, 1, 0);
-        glColor3f(0.70f, 0.70f, 0.70f);
-        glScalef(0.34f, 0.10f, 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-        glPushMatrix();
-        glTranslatef(-1.4f, 0.10f, zside * 0.99f);
-        if (s < 0) glRotatef(180, 0, 1, 0);
-        glColor3f(0.16f, 0.25f, 0.55f);
-        glScalef(0.12f, 0.16f, 0.02f);
-        drawCube(1.0f);
-        glPopMatrix();
-    }
-
+    // small dark sensor housing near the front of the sail roof
     glPushMatrix();
-    glTranslatef(-0.1f, hullR + 0.32f, 0);
-    glColor3fv(hullDark);
-    glScalef(2.30f, 0.68f, 0.62f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(1.0f, hullR + 0.28f, 0);
-    glColor3fv(hullDark);
-    glRotatef(-20, 0, 0, 1);
-    glScalef(0.30f, 0.62f, 0.58f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-0.1f, hullR + 0.68f, 0);
-    glColor3f(0.10f, 0.10f, 0.11f);
-    glScalef(2.20f, 0.07f, 0.56f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-1.15f, hullR + 0.28f, 0);
-    glColor3fv(hullDark);
-    glRotatef(22, 0, 0, 1);
-    glScalef(0.28f, 0.60f, 0.56f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(-0.1f, hullR + 0.72f, 0);
-    glRotatef(90, 0, 1, 0);
-    glColor3f(0.13f, 0.13f, 0.14f);
-    drawCylinder(0.06f, 2.10f, 12);
-    glPopMatrix();
-    for (int s = -1; s <= 1; s += 2) {
-        glPushMatrix();
-        glTranslatef(-0.35f, hullR + 0.42f, s * 0.32f);
-        if (s < 0) glRotatef(180, 0, 1, 0);
-        glColor3f(0.04f, 0.07f, 0.09f);
-        drawDisk(0.0f, 0.09f, 12);
-        glPopMatrix();
-    }
-    glDisable(GL_LIGHTING);
-    glPushMatrix();
-    glTranslatef(0.75f, hullR + 0.76f, 0);
-    glColor3f(1.0f, 0.22f, 0.12f);
-    drawSphere(0.09f, 10, 8);
-    glColor4f(1.0f, 0.25f, 0.12f, 0.5f);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    drawSphere(0.16f, 10, 8);
-    glDisable(GL_BLEND);
-    glPopMatrix();
-    glEnable(GL_LIGHTING);
-
-    float mastX2[] = { -0.62f, -0.48f, -0.36f, -0.24f, -0.72f };
-    float mastH2[] = { 1.90f, 1.40f, 1.65f, 1.25f, 1.05f };
-    float mastR2[] = { 0.022f, 0.018f, 0.020f, 0.016f, 0.014f };
-    for (int m = 0; m < 5; m++) {
-        glPushMatrix();
-        glTranslatef(mastX2[m], hullR + 0.40f, 0);
-        glColor3f(0.08f, 0.08f, 0.09f);
-        drawCylinder(mastR2[m], mastH2[m], 8);
-        glTranslatef(0, mastH2[m], 0);
-        glColor3f(0.12f, 0.12f, 0.13f);
-        if (m==1||m==3) drawSphere(mastR2[m] + 0.012f, 8, 6); else drawSphere(mastR2[m] + 0.008f, 8, 6);
-        glPopMatrix();
-    }
-
-    glPushMatrix();
-    glTranslatef(3.72f, 0.02f, 0);
-    glColor3f(0.62f, 0.63f, 0.65f);
-    glScalef(0.20f, 0.20f, 1.10f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glDisable(GL_LIGHTING);
-    glPushMatrix();
-    glTranslatef(3.84f, 0.02f, 0);
-    float boost = sub.headlightsOn ? 1.0f : 0.55f;
-    glColor3f(1.0f * boost, 0.28f * boost, 0.10f * boost);
-    glScalef(0.08f, 0.10f, 0.96f);
-    drawCube(1.0f);
-    glPopMatrix();
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glPushMatrix();
-    glTranslatef(3.86f, 0.02f, 0);
-    glColor4f(1.0f, 0.30f, 0.12f, 0.45f * boost);
-    glScalef(0.14f, 0.20f, 1.15f);
+    glColor3f(0.06f, 0.08f, 0.08f);
+    glTranslatef(1.62f, R + 0.17f, 0.0f);
+    glScalef(0.11f, 0.07f, 0.11f);
     drawSphere(1.0f, 12, 8);
     glPopMatrix();
-    glDisable(GL_BLEND);
-    glEnable(GL_LIGHTING);
 
-    for (int s = -1; s <= 1; s += 2) {
+    // two thin masts on the sail roof: periscope (front) + antenna (rear)
+    glPushMatrix();
+    glColor3f(0.22f * depthDark, 0.30f * depthDark, 0.30f * depthDark);
+    glTranslatef(1.34f, R + 0.17f, 0.0f);
+    drawCylinder(0.026f, 0.42f, 8);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(0.76f, R + 0.17f, 0.0f);
+    drawCylinder(0.018f, 0.50f, 8);
+    glPopMatrix();
+
+    // ---- tail stabilisers: solid rounded fins (blunt ellipsoid plates with
+    //      no sharp tips) sized for the thicker stern, broader than the old
+    //      skinny blades ----
+    glColor3f(0.24f * depthDark, 0.31f * depthDark, 0.31f * depthDark);
+    for (int sgn = -1; sgn <= 1; sgn += 2) {
         glPushMatrix();
-        glTranslatef(-3.75f, 0.0f, s * 0.45f);
-        glRotatef(14, 0, 0, s);
-        glColor3fv(hullRed);
-        glScalef(0.70f, 0.05f, 0.60f);
-        drawCube(1.0f);
+        glTranslatef(-3.62f, 0.0f, sgn * 0.73f);
+        glScalef(0.36f, 0.055f, 0.26f);
+        drawSphere(1.0f, 16, 10);
         glPopMatrix();
     }
     glPushMatrix();
-    glTranslatef(-3.80f, 0.45f, 0);
-    glRotatef(18, 0, 0, 1);
-    glColor3fv(hullRed);
-    glScalef(0.70f, 0.75f, 0.05f);
-    drawCube(1.0f);
+    glTranslatef(-3.62f, 0.73f, 0.0f);
+    glScalef(0.36f, 0.26f, 0.055f);
+    drawSphere(1.0f, 16, 10);
     glPopMatrix();
+
+    // cap the open stern face (the boat-tail now ends at a thick 0.52-radius
+    // ring, so close it with a dark tail plate the propeller shaft pierces)
+    glDisable(GL_LIGHTING);
+    glColor3f(0.16f, 0.20f, 0.20f);
     glPushMatrix();
-    glTranslatef(-3.80f, -0.38f, 0);
-    glRotatef(-18, 0, 0, 1);
-    glColor3fv(hullRed);
-    glScalef(0.65f, 0.60f, 0.05f);
-    drawCube(1.0f);
+    glTranslatef(XT + 0.005f, 0.0f, 0.0f);
+    glRotatef(-90.0f, 0.0f, 1.0f, 0.0f);
+    drawDisk(0.0f, 0.50f, 32);
     glPopMatrix();
+    glEnable(GL_LIGHTING);
+
+    // small propeller-nose cone at the very tip (hidden by the taper)
+    glPushMatrix();
+    glColor3f(0.16f, 0.20f, 0.20f);
+    glTranslatef(-4.20f, 0.0f, 0.0f);
+    glScalef(0.14f, 0.10f, 0.10f);
+    drawSphere(1.0f, 12, 8);
+    glPopMatrix();
+
+    // restore the scene-default material / colour-material state
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+    GLfloat sSpec[4] = { 0.70f, 0.70f, 0.75f, 1.0f };
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, sSpec);
+    glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, 90.0f);
+    glColor3f(1.0f, 1.0f, 1.0f);
 }
 
 void drawPropeller() {
@@ -987,7 +1183,12 @@ void drawPropeller() {
 }
 
 void setupSubHeadlight() {
-    if (!sub.headlightsOn || sub.y > -1.5f) { glDisable(GL_LIGHT2); return; }
+    if (!sub.headlightsOn) {
+        glDisable(GL_LIGHT2);
+        glDisable(GL_LIGHT4);
+        glDisable(GL_LIGHT5);
+        return;
+    }
     float yawRad = sub.yaw * DEG_TO_RAD;
     float pitchRad = sub.pitch * DEG_TO_RAD;
     float cp = cos(pitchRad);
@@ -1008,11 +1209,51 @@ void setupSubHeadlight() {
     glLightfv(GL_LIGHT2, GL_AMBIENT, amb2);
     glLightfv(GL_LIGHT2, GL_DIFFUSE, diff2);
     glLightfv(GL_LIGHT2, GL_SPECULAR, spec2);
-    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 38.0f);
-    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 3.0f);
+    glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 28.0f);
+    glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 5.0f);
     glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.2f);
     glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.02f);
     glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.003f);
+
+    // ---- two forward white-blue bow lamps (GL_LIGHT4 / GL_LIGHT5) that sit
+    //      in the emissive housings just below the front window. The world
+    //      positions come from the local housing offsets transformed by the
+    //      sub's yaw+pitch (matching the scale of drawFullSubmarine), and the
+    //      spot is aimed forward and slightly downward. Linear + quadratic
+    //      attenuation produce a clearly visible range in front of the sub so
+    //      nearby water / fish / seafloor brighten inside a cone and fade away.
+    //      ----
+    const float sLen = SUB_SCALE * SUB_LEN, sLat = SUB_SCALE;
+    for (int li = 0; li < 2; li++) {
+        int hz = (li == 0) ? -1 : 1;
+        float lx = sLen * 3.905f;
+        float ly = sLat * -0.52f;
+        float lz = sLat * (hz * 0.58f);
+        float ca = cos(yawRad), sa = sin(yawRad);
+        float w1x = lx * ca + lz * sa;      // yaw about +Y
+        float w1z = -lx * sa + lz * ca;
+        float w1y = ly;
+        float wx = sub.x + w1x * cp - w1y * sin(pitchRad);   // pitch about +Z
+        float wy = sub.y + w1x * sin(pitchRad) + w1y * cp;
+        float wz = sub.z + w1z;
+        GLenum lt = (li == 0) ? GL_LIGHT4 : GL_LIGHT5;
+        GLfloat posL[]  = { wx, wy, wz, 1.0f };
+        GLfloat dirL[]  = { fx, fy, fz };
+        GLfloat ambL[]  = { 0.10f, 0.13f, 0.18f, 1.0f };
+        GLfloat difL[]  = { 1.00f, 1.05f, 1.15f, 1.0f };
+        GLfloat spcL[]  = { 1.00f, 1.00f, 1.00f, 1.0f };
+        glEnable(lt);
+        glLightfv(lt, GL_POSITION, posL);
+        glLightfv(lt, GL_SPOT_DIRECTION, dirL);
+        glLightfv(lt, GL_AMBIENT, ambL);
+        glLightfv(lt, GL_DIFFUSE, difL);
+        glLightfv(lt, GL_SPECULAR, spcL);
+        glLightf(lt, GL_SPOT_CUTOFF, 30.0f);
+        glLightf(lt, GL_SPOT_EXPONENT, 22.0f);
+        glLightf(lt, GL_CONSTANT_ATTENUATION, 1.0f);
+        glLightf(lt, GL_LINEAR_ATTENUATION, 0.25f);
+        glLightf(lt, GL_QUADRATIC_ATTENUATION, 0.10f);
+    }
 }
 
 void drawHeadlightBeam(float lx, float ly, float lz, float len, float farR) {
@@ -1026,13 +1267,43 @@ void drawHeadlightBeam(float lx, float ly, float lz, float len, float farR) {
     glPopMatrix();
 }
 
+void drawBeamCone(float lx, float ly, float lz, float len, float nearR, float farR) {
+    glPushMatrix();
+    glTranslatef(lx, ly, lz);
+    glRotatef(90, 0, 1, 0);
+    const int SEG = 18;
+    const float PI2 = (float)(2.0 * PI);
+    glBegin(GL_TRIANGLE_FAN);
+    glColor4f(0.60f, 0.85f, 1.0f, 0.02f);
+    glVertex3f(len, 0.0f, 0.0f);
+    for (int k = 0; k <= SEG; k++) {
+        float a = PI2 * (float)k / (float)SEG;
+        glColor4f(0.60f, 0.85f, 1.0f, 0.02f);
+        glVertex3f(len, farR * cosf(a), farR * sinf(a));
+    }
+    glEnd();
+    glBegin(GL_QUAD_STRIP);
+    for (int k = 0; k <= SEG; k++) {
+        float a = PI2 * (float)k / (float)SEG;
+        float c = cosf(a), s = sinf(a);
+        glColor4f(0.60f, 0.85f, 1.0f, 0.13f);
+        glVertex3f(0.0f, nearR * c, nearR * s);
+        glColor4f(0.60f, 0.85f, 1.0f, 0.02f);
+        glVertex3f(len, farR * c, farR * s);
+    }
+    glEnd();
+    glPopMatrix();
+}
+
 void drawSubmarineHeadlights() {
-    if (!sub.headlightsOn || sub.y > -1.5f) return;
+    if (!sub.headlightsOn) return;
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
-    glColor4f(1.0f, 0.45f, 0.20f, 0.10f);
-    drawHeadlightBeam(3.88f, 0.02f, 0.0f, 14.0f, 9.0f);
+    // two realistic bow-lamp beams matching the spotlight cones: short,
+    // gently tilted down, soft and fading - no oversized fake light pillar
+    drawBeamCone(3.905f, -0.52f,  0.58f, 3.2f, 0.05f, 1.0f);
+    drawBeamCone(3.905f, -0.52f, -0.58f, 3.2f, 0.05f, 1.0f);
     glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
 }
@@ -1678,13 +1949,147 @@ void drawCoral() {
     }
 }
 
-// Crew cabin occupies world space around the sub - keep sea life out of
-// the room in crew view (they still swim past right outside the window)
+// ============================================================
+// SUBMARINE HULL BOUNDARY - the outer hull is a SOLID barrier.
+// The hull is modelled in hull-local coords (before SUB scale) as a
+// fat cylinder of radius 1.18 along X, a hemispherical bow and a
+// long boat-tail - matching the drawn submarine body. Any point
+// that lands inside this volume is pushed back out to the surface so
+// nothing from outside (fish, sharks, rays, bubbles) can enter the
+// interior. World->hull-local conversion undoes the sub's yaw/pitch/roll
+// and the SUB_SCALE x/y/z differences.
+// ============================================================
+static void subWorldToHullLocal(float wx, float wy, float wz,
+                                float& hx, float& hy, float& hz) {
+    float dx = wx - sub.x, dy = wy - sub.y, dz = wz - sub.z;
+    float c, s;
+    // undo yaw (Ry(-yaw))
+    c = cosf(sub.yaw * DEG_TO_RAD); s = sinf(sub.yaw * DEG_TO_RAD);
+    float x1 = dx * c - dz * s;
+    float z1 = dx * s + dz * c;
+    float y1 = dy;
+    // undo pitch (Rz(-pitch))
+    c = cosf(sub.pitch * DEG_TO_RAD); s = sinf(sub.pitch * DEG_TO_RAD);
+    float x2 = x1 * c + y1 * s;
+    float y2 = -x1 * s + y1 * c;
+    float z2 = z1;
+    // undo roll (Rx(-roll))
+    c = cosf(sub.roll * DEG_TO_RAD); s = sinf(sub.roll * DEG_TO_RAD);
+    float y3 = y2 * c + z2 * s;
+    float z3 = -y2 * s + z2 * c;
+    // undo SUB scale
+    hx = x2 / (SUB_SCALE * SUB_LEN);
+    hy = y3 / SUB_SCALE;
+    hz = z3 / SUB_SCALE;
+}
+
+static void subHullLocalToWorld(float hx, float hy, float hz,
+                                float& wx, float& wy, float& wz) {
+    float c, s;
+    // SUB scale
+    float x3 = hx * (SUB_SCALE * SUB_LEN), y3 = hy * SUB_SCALE, z3 = hz * SUB_SCALE;
+    // forward roll (Rx(+roll))
+    c = cosf(sub.roll * DEG_TO_RAD); s = sinf(sub.roll * DEG_TO_RAD);
+    float x2 = x3, y2 = y3 * c - z3 * s, z2 = y3 * s + z3 * c;
+    // forward pitch (Rz(+pitch))
+    c = cosf(sub.pitch * DEG_TO_RAD); s = sinf(sub.pitch * DEG_TO_RAD);
+    float x1 = x2 * c - y2 * s, y1 = x2 * s + y2 * c, z1 = z2;
+    // forward yaw (Ry(+yaw))
+    c = cosf(sub.yaw * DEG_TO_RAD); s = sinf(sub.yaw * DEG_TO_RAD);
+    wx = x1 * c + z1 * s + sub.x;
+    wy = y1 + sub.y;
+    wz = -x1 * s + z1 * c + sub.z;
+}
+
+// attached superstructure that sticks out of the main hull body:
+// the low streamlined sail and its two thin masts. These are the only
+// protrusions big enough for a fish/shark to sit inside or clip.
+static bool inSuperstructureLocal(float hx, float hy, float hz) {
+    // low sail: capsule footprint on the deck (visual top ~1.43 local)
+    if (hx >= 0.88f && hx <= 1.52f && hy >= 1.08f && hy <= 1.52f &&
+        hz >= -0.15f && hz <= 0.15f) return true;
+    // thin masts (periscope + antenna) rising to ~1.95 local
+    if (hx >= 0.58f && hx <= 1.42f && hy >= 1.40f && hy <= 1.95f &&
+        hz >= -0.06f && hz <= 0.06f) return true;
+    return false;
+}
+
+// true when the hull-local point sits inside the solid hull volume or any
+// attached superstructure
+static bool inHullLocal(float hx, float hy, float hz) {
+    float rr = hy * hy + hz * hz;
+    if (hx >= -1.60f && hx <= 3.00f) {
+        if (rr <= 1.18f * 1.18f) return true;                  // fat mid cylinder
+    } else if (hx > 3.00f) {                                   // hemispherical bow
+        float dx = hx - 3.00f;
+        if (dx * dx + rr <= 1.18f * 1.18f) return true;
+    } else if (hx >= -4.19f) {                                 // long boat-tail
+        float rAt = 1.18f + (hx + 1.60f) * 1.03f / 2.59f;
+        if (rr <= rAt * rAt) return true;
+    } else {                                                   // tail cap sphere
+        float dx = hx + 4.19f;
+        if (dx * dx + rr <= 0.20f * 0.20f) return true;
+    }
+    return inSuperstructureLocal(hx, hy, hz);
+}
+
+// push a hull-local point that is inside back to just outside the surface.
+// K scales the clear radius: bigger = the object's centre sits further out,
+// which keeps the full body (not just the centre) out of the metal
+static bool resolveHullLocal(float& hx, float& hy, float& hz, float K) {
+    // superstructure - whatever is inside the sail/masts is lifted straight
+    // up over the top so it never clips the raised deck
+    if (inSuperstructureLocal(hx, hy, hz)) {
+        hy = 1.95f + 0.10f * K;
+        return true;
+    }
+    if (!inHullLocal(hx, hy, hz)) return false;
+    float rr = hy * hy + hz * hz;
+    if (hx >= -1.60f && hx <= 3.00f) {
+        float r = sqrtf(rr);
+        if (r < 0.0001f) { hy = 1.18f * K; hz = 0.0f; }
+        else { float k = (1.18f * K) / r; hy *= k; hz *= k; }
+        return true;
+    }
+    if (hx > 3.00f) {
+        float dx = hx - 3.00f;
+        float d = sqrtf(dx * dx + rr);
+        if (d < 0.0001f) { dx = 1.0f; d = 1.0f; }
+        float k = (1.18f * K) / d;
+        hx = 3.00f + dx * k; hy *= k; hz *= k;
+        return true;
+    }
+    if (hx >= -4.19f) {
+        float rAt = 1.18f + (hx + 1.60f) * 1.03f / 2.59f;
+        float r = sqrtf(rr);
+        if (r < 0.0001f) { hy = rAt * K; hz = 0.0f; }
+        else { float k = (rAt * K) / r; hy *= k; hz *= k; }
+        return true;
+    }
+    float dx = hx + 4.19f;
+    float d = sqrtf(dx * dx + rr);
+    if (d < 0.0001f) { dx = 1.0f; d = 1.0f; }
+    float k = (0.20f * K) / d;
+    hx = -4.19f + dx * k; hy *= k; hz *= k;
+    return true;
+}
+
+// Crew room + hull boundary - applies in every camera mode, not only the
+// control screen. Any point inside the solid hull is treated as "inside".
 bool insideCrewCabin(float x, float y, float z) {
-    if (cameraMode != CAM_CONTROL_SCREEN) return false;
-    if (fabs(x - sub.x) > 3.4f) return false;
-    if (fabs(z - sub.z) > 2.6f) return false;
-    if (y < sub.y - 1.4f || y > sub.y + 2.6f) return false;
+    float hx, hy, hz;
+    subWorldToHullLocal(x, y, z, hx, hy, hz);
+    return inHullLocal(hx, hy, hz);
+}
+
+// world-space containment: a point that entered the hull is moved back out
+// to the surface (plus clearance); returns true when a push happened
+static bool resolveSubHullBoundary(float& x, float& y, float& z,
+                                   float clearance = 1.25f) {
+    float hx, hy, hz;
+    subWorldToHullLocal(x, y, z, hx, hy, hz);
+    if (!resolveHullLocal(hx, hy, hz, clearance)) return false;
+    subHullLocalToWorld(hx, hy, hz, x, y, z);
     return true;
 }
 
@@ -1699,6 +2104,7 @@ void drawFish() {
 
     for (size_t i = 0; i < fishes.size(); i++) {
         Fish& f = fishes[i];
+        resolveSubHullBoundary(f.x, f.y, f.z, 1.9f);
         if (insideCrewCabin(f.x, f.y, f.z)) continue;
         glPushMatrix();
         glTranslatef(f.x, f.y, f.z);
@@ -1902,6 +2308,9 @@ void drawSharks() {
         Shark& s = sharks[i];
         float sx = s.cx + cos(s.angle) * s.radius;
         float sz = s.cz + sin(s.angle) * s.radius;
+        // solid hull barrier - sharks circle on a fixed orbit; when the orbit
+        // crosses the hull the shark rides the surface instead of entering it
+        resolveSubHullBoundary(sx, s.cy, sz, 2.3f);
         if (insideCrewCabin(sx, s.cy, sz)) continue;
         float tailWag = sin(introTimer * 0.004f + i * 2.0f) * 12.0f;
         glPushMatrix();
@@ -2032,6 +2441,9 @@ void drawRays() {
         Ray& r = rays[i];
         float rx = r.cx + cos(r.angle) * r.radius;
         float rz = r.cz + sin(r.angle) * r.radius;
+        // solid hull barrier - rays glide on a fixed orbit; where the orbit
+        // cuts the hull they slide along the surface instead of entering it
+        resolveSubHullBoundary(rx, r.cy, rz, 2.3f);
         if (insideCrewCabin(rx, r.cy, rz)) continue;
         float flap = sin(introTimer * 0.003f + r.phase) * 0.12f;
         glPushMatrix();
@@ -2772,8 +3184,67 @@ void drawCrewCabin() {
         glPopMatrix();
         glEnable(GL_LIGHTING);
     };
-    capFan(-CR_AX,  1.0f, false, 0.10f);
+    capFan(CREW_FAR_WALL,  1.0f, false, 0.10f);
     capFan( CR_AX, -1.0f, true,  0.10f);
+
+    // Crew quarters tube extension: the rest area aft of the aft bulkhead,
+    // same ellipse as the main hull (no portholes); spans CR_AX -> CREW_FAR_WALL.
+    cabSurface(COL_HULL, SPEC_ALL, 40);
+    glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
+    {
+        const float crewStride = (CR_AX - CREW_FAR_WALL) / 12.0f;
+        glBegin(GL_QUADS);
+        for (int ix = 0; ix < 12; ix++) {
+            float x0 = -CR_AX - ix * crewStride;
+            float x1 = x0 - crewStride;
+            for (int it = 0; it < CR_SEG; it++) {
+                float t0 = it * tStep;
+                float t1 = t0 + tStep;
+                float yA, zA, yB, zB, yC, zC, yD, zD;
+                hullYZ(t0, yA, zA);
+                hullYZ(t1, yB, zB);
+                hullYZ(t1, yC, zC);
+                hullYZ(t0, yD, zD);
+                float yMid, zMid;
+                hullYZ(0.5f * (t0 + t1), yMid, zMid);
+                float midRatio = (yMid - CR_CY) / CR_AY;
+                float lum = 0.86f + 0.35f * midRatio;
+                int hash = (int)(hashNoise(ix * 3 + it, ix + it * 5, 19) & 3);
+                lum += ((float)hash - 1.5f) * 0.03f;
+                if (lum < 0.5f) lum = 0.5f;
+                if (lum > 1.25f) lum = 1.25f;
+                glColor3f(COL_HULL[0] * lum, COL_HULL[1] * lum, COL_HULL[2] * lum);
+                float nAy, nAz, nBy, nBz, nCy, nCz, nDy, nDz;
+                hullNormal(yA, zA, nAy, nAz);
+                hullNormal(yB, zB, nBy, nBz);
+                hullNormal(yC, zC, nCy, nCz);
+                hullNormal(yD, zD, nDy, nDz);
+                glNormal3f(0.0f, nAy, nAz); glVertex3f(x0, yA, zA);
+                glNormal3f(0.0f, nBy, nBz); glVertex3f(x0, yB, zB);
+                glNormal3f(0.0f, nCy, nCz); glVertex3f(x1, yC, zC);
+                glNormal3f(0.0f, nDy, nDz); glVertex3f(x1, yD, zD);
+            }
+        }
+        glEnd();
+    }
+    // thin rib seams across the crew tube so it matches the rest of the hull
+    glDisable(GL_LIGHTING);
+    glLineWidth(1.6f);
+    glColor3f(0.10f, 0.11f, 0.13f);
+    {
+        const float crewRib[4] = { -2.30f, -3.00f, -3.70f, -4.30f };
+        for (int r = 0; r < 4; r++) {
+            glBegin(GL_LINE_LOOP);
+            for (int it = 0; it < CR_SEG; it++) {
+                float t = (float)it * tStep;
+                float y, z;
+                hullYZ(t, y, z);
+                glVertex3f(crewRib[r], y, z);
+            }
+            glEnd();
+        }
+    }
+    glEnable(GL_LIGHTING);
 
     // ------------------------------------------------------------------
     // 2. DECK - dark tiled floor grid, thin lighter seam lines, no centre
@@ -2811,46 +3282,11 @@ void drawCrewCabin() {
     glEnable(GL_LIGHTING);
 
     // ------------------------------------------------------------------
-    // 3. PORTHOLES - six small circular metal-rimmed ocean windows
+    // 3. PORTHOLES - six round ocean windows. The curved hull skin above
+    // already cuts six round openings; the underwater world drawn first
+    // shows straight through. No disc, ring or cover remains - the window
+    // openings are fully open.
     // ------------------------------------------------------------------
-    auto porthole = [&](float px, float py, float pz, float side) {
-        glPushMatrix();
-        glTranslatef(px, py, pz);
-        if (side < 0.0f) glRotatef(180.0f, 0, 1, 0);
-        // Outer rim: a thin dark metal ring (matte, NOT glowing) that barely
-        // overlaps the disc so the window reads as a flush circular port.
-        cabSurface(COL_TRIM, SPEC_ALL, 40);
-        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-        drawDisk(0.17f, 0.20f, 32);
-        // Single thin, subtle emissive highlight a few pixels wide on the very
-        // outer rim edge - no glow on the disc, no bloom radiating outward.
-        float rimEm[] = { 0.03f, 0.10f, 0.18f, 1.0f };
-        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, rimEm);
-        drawDisk(0.19f, 0.20f, 32);
-        float noEm[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-        glMaterialfv(GL_FRONT_AND_BACK, GL_EMISSION, noEm);
-        // Inner disc: the window itself - a flat circle showing dim underwater
-        // view, dark blue centre fading to lighter blue-cyan toward the edge.
-        glDisable(GL_LIGHTING);
-        glBegin(GL_TRIANGLE_FAN);
-        glColor3f(0.04f, 0.10f, 0.18f);
-        glVertex3f(0.0f, 0.0f, 0.0f);
-        const int vN = 24;
-        for (int i = 0; i <= vN; i++) {
-            float av = (float)i / (float)vN * 2.0f * (float)PI;
-            glColor3f(0.13f, 0.42f, 0.68f);
-            glVertex3f(cosf(av) * 0.17f, sinf(av) * 0.17f, 0.0f);
-        }
-        glEnd();
-        glEnable(GL_LIGHTING);
-        glPopMatrix();
-    };
-    porthole(-0.75f, 0.50f,  1.40f,  1.0f);
-    porthole( 0.00f, 0.50f,  1.40f,  1.0f);
-    porthole( 0.75f, 0.50f,  1.40f,  1.0f);
-    porthole(-0.75f, 0.50f, -1.40f, -1.0f);
-    porthole( 0.00f, 0.50f, -1.40f, -1.0f);
-    porthole( 0.75f, 0.50f, -1.40f, -1.0f);
 
     // ------------------------------------------------------------------
     // 4. OVERHEAD - light housing, ducts, pipes, cable trays, valves
@@ -2973,6 +3409,17 @@ void drawCrewCabin() {
     glScalef(0.14f, 0.06f, 1.90f);
     drawCube(1.0f);
     glPopMatrix();
+    // hull fill panels flanking the main screen - close the empty wall gap
+    // between the screen border frame and the curved hull walls on both sides
+    cabSurface(COL_HULL, SPEC_ALL, 40);
+    for (int s = -1; s <= 1; s += 2) {
+        glPushMatrix();
+        glTranslatef(CR_XF, 0.535f, s * 1.055f);
+        glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
+        glScalef(0.14f, 0.82f, 0.34f);
+        drawCube(1.0f);
+        glPopMatrix();
+    }
     // side status displays flanking the main screen
     for (int s = -1; s <= 1; s += 2) {
         cabSurface(COL_PANEL, SPEC_CONS, 60);
@@ -2997,18 +3444,21 @@ void drawCrewCabin() {
         glPopMatrix();
         glEnable(GL_LIGHTING);
     }
-    // main front-view screen: thin glowing cyan border frame around the window
-    cabGlow(COL_BORDER);
+    // main front-view screen: matte near-black border frame around the window
+    // (no emission/glow - same material class as other dark cabin metal)
+    const float COL_SCR_BD[3] = { 0.04f, 0.04f, 0.05f };
+    cabSurface(COL_SCR_BD, SPEC_ALL, 40);
     for (int bd = 0; bd < 4; bd++) {
         glPushMatrix();
         if (bd == 0) { glTranslatef(CR_XF - 0.13f, 0.93f, 0.0f);   glScalef(0.06f, 0.10f, 1.90f); }
         if (bd == 1) { glTranslatef(CR_XF - 0.13f, 0.135f, 0.0f);  glScalef(0.06f, 0.13f, 1.90f); }
         if (bd == 2) { glTranslatef(CR_XF - 0.13f, 0.54f, -0.90f); glScalef(0.06f, 0.68f, 0.12f); }
         if (bd == 3) { glTranslatef(CR_XF - 0.13f, 0.54f,  0.90f); glScalef(0.06f, 0.68f, 0.12f); }
-        glColor3f(COL_BORDER[0], COL_BORDER[1], COL_BORDER[2]);
+        glColor3f(COL_SCR_BD[0], COL_SCR_BD[1], COL_SCR_BD[2]);
         drawCube(1.0f);
         glPopMatrix();
     }
+
     cabSurface(COL_HULL, SPEC_ALL, 40);
     // big bow window: fully open glass, no veils or glows - the ocean stays
     // crisp. Only the thin structural nose glass tints the view slightly.
@@ -3291,50 +3741,65 @@ void drawCrewCabin() {
 
     auto chair = [&](float cx, float cz, float yaw) {
         glPushMatrix();
-        glTranslatef(cx, -0.52f, cz);
+        glTranslatef(cx, CR_FY, cz);
         glRotatef(yaw, 0, 1, 0);
-        for (int k = 0; k < 5; k++) {
-            float a = (float)k * 1.256637f;
-            glPushMatrix();
-            glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
-            glTranslatef(cos(a) * 0.16f, 0.015f, sin(a) * 0.16f);
-            drawSphere(0.025f, 6, 5);
-            glPopMatrix();
-            glPushMatrix();
-            glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
-            glTranslatef(cos(a) * 0.08f, 0.03f, sin(a) * 0.08f);
-            glRotatef(k * 72.0f, 0, 1, 0);
-            glScalef(0.05f, 0.02f, 0.16f);
-            drawCube(1.0f);
-            glPopMatrix();
-        }
-        glPushMatrix();
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
         glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
-        glTranslatef(0.0f, 0.10f, 0.0f);
-        glRotatef(-90, 1, 0, 0);
-        drawCylinder(0.025f, 0.10f, 8);
-        glPopMatrix();
+        // --- pedestal base: wide flat foot plate + central post ---
         glPushMatrix();
-        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
-        glTranslatef(0.0f, 0.14f, 0.0f);
-        glScalef(0.28f, 0.04f, 0.26f);
+        glTranslatef(0.0f, 0.015f, 0.0f);
+        glScalef(0.38f, 0.03f, 0.38f);
         drawCube(1.0f);
         glPopMatrix();
         glPushMatrix();
-        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
-        glTranslatef(0.0f, 0.26f, -0.10f);
-        glScalef(0.26f, 0.24f, 0.035f);
+        glTranslatef(0.0f, 0.075f, 0.0f);
+        glRotatef(-90.0f, 1, 0, 0);
+        drawCylinder(0.04f, 0.09f, 8);
+        glPopMatrix();
+        // --- seat: padded box at sitting height ---
+        glPushMatrix();
+        glTranslatef(0.0f, 0.065f, 0.0f);
+        glScalef(0.46f, 0.09f, 0.44f);
         drawCube(1.0f);
         glPopMatrix();
-        // glowing trim strip along the seat-back top edge
-        cabGlow(COL_STRIP);
-        glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
+        // --- backrest: tilted slab rising from rear edge of seat ---
+        // Use a dimmer specular on the backrest's upper face so it still reads
+        // as light coloured but no longer blows out to a white glow.
+        const float CBR_BACK[3] = { 0.34f, 0.38f, 0.43f };
+        cabSurface(COL_PANEL, CBR_BACK, 24);
         glPushMatrix();
-        glTranslatef(0.0f, 0.386f, -0.117f);
-        glScalef(0.22f, 0.016f, 0.014f);
+        glTranslatef(0.0f, 0.11f, -0.22f);
+        glRotatef(-12.0f, 1, 0, 0);
+        glTranslatef(0.0f, 0.23f, 0.0f);
+        glScalef(0.44f, 0.46f, 0.05f);
         drawCube(1.0f);
         glPopMatrix();
         cabSurface(COL_PANEL, SPEC_CONS, 60);
+        // --- emissive cyan trim: thin strip along backrest top edge only ---
+        cabGlow(COL_STRIP);
+        glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
+        glPushMatrix();
+        glTranslatef(0.0f, 0.11f, -0.22f);
+        glRotatef(-12.0f, 1, 0, 0);
+        glTranslatef(0.0f, 0.455f, 0.0f);
+        glScalef(0.38f, 0.012f, 0.07f);
+        drawCube(1.0f);
+        glPopMatrix();
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
+        // --- armrests: horizontal bars + vertical support stubs ---
+        for (int side = -1; side <= 1; side += 2) {
+            glPushMatrix();
+            glTranslatef(side * 0.26f, 0.30f, 0.0f);
+            glScalef(0.05f, 0.03f, 0.28f);
+            drawCube(1.0f);
+            glPopMatrix();
+            glPushMatrix();
+            glTranslatef(side * 0.26f, 0.20f, -0.08f);
+            glScalef(0.04f, 0.21f, 0.04f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
         glPopMatrix();
     };
 
@@ -3599,13 +4064,199 @@ void drawCrewCabin() {
     crew(-0.05f, -0.52f,  0.86f, 0.0f, true, 0);
 
     // ------------------------------------------------------------------
+    // 7B. CREW QUARTERS - dim rest area inside the aft tube extension.
+    // Drawn before the aft bulkhead so the wall + hatch occlude it back to
+    // the doorway opening.
+    // ------------------------------------------------------------------
+    // DIM overhead wash for the whole rest area (cool cyan, much dimmer
+    // than the control room lights). GL_LIGHT6 is free in this build.
+    glEnable(GL_LIGHT6);
+    {
+        GLfloat q6Pos[] = { -3.20f, 1.15f, 0.0f, 1.0f };
+        GLfloat q6Amb[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        GLfloat q6Dif[] = { 0.12f, 0.18f, 0.28f, 1.0f };
+        GLfloat q6Spc[] = { 0.02f, 0.04f, 0.07f, 1.0f };
+        glLightfv(GL_LIGHT6, GL_POSITION, q6Pos);
+        glLightfv(GL_LIGHT6, GL_AMBIENT, q6Amb);
+        glLightfv(GL_LIGHT6, GL_DIFFUSE, q6Dif);
+        glLightfv(GL_LIGHT6, GL_SPECULAR, q6Spc);
+        glLightf(GL_LIGHT6, GL_CONSTANT_ATTENUATION, 1.0f);
+        glLightf(GL_LIGHT6, GL_LINEAR_ATTENUATION, 0.10f);
+        glLightf(GL_LIGHT6, GL_QUADRATIC_ATTENUATION, 0.0f);
+    }
+    // deck slab + thin top plate, butting against the control-room deck
+    cabSurface(COL_FLOOR, SPEC_FLOOR, 20);
+    glPushMatrix();
+    glTranslatef(-3.15f, CR_FY - 0.09f, 0.0f);
+    glColor3f(COL_FLOOR[0], COL_FLOOR[1], COL_FLOOR[2]);
+    glScalef(2.80f, 0.16f, 2.40f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(-3.15f, CR_FY, 0.0f);
+    glColor3f(COL_FLOOR[0], COL_FLOOR[1], COL_FLOOR[2]);
+    glScalef(2.76f, 0.02f, 2.34f);
+    drawCube(1.0f);
+    glPopMatrix();
+    // tile seam lines matching the control-room grid
+    glDisable(GL_LIGHTING);
+    glLineWidth(1.0f);
+    glColor3f(0.15f, 0.17f, 0.19f);
+    glBegin(GL_LINES);
+    for (int tx = 0; tx <= 5; tx++) {
+        float px = -1.80f - tx * 0.50f;
+        glVertex3f(px, CR_FY + 0.018f, -1.15f);
+        glVertex3f(px, CR_FY + 0.018f,  1.15f);
+    }
+    for (int tz = 0; tz <= 4; tz++) {
+        float pz = -1.15f + tz * 0.60f;
+        glVertex3f(-1.80f, CR_FY + 0.018f, pz);
+        glVertex3f(-4.30f, CR_FY + 0.018f, pz);
+    }
+    glEnd();
+    glEnable(GL_LIGHTING);
+    // dim recessed light panels on the crew ceiling
+    for (int lp = -1; lp <= 1; lp += 2) {
+        for (int lp2 = 0; lp2 < 3; lp2++) {
+            glDisable(GL_LIGHTING);
+            glPushMatrix();
+            glTranslatef(-2.30f - lp2 * 0.70f, 1.60f, lp * 0.55f);
+            glColor3f(0.10f, 0.22f, 0.36f);
+            glScalef(0.50f, 0.02f, 0.28f);
+            drawCube(1.0f);
+            glPopMatrix();
+            glEnable(GL_LIGHTING);
+        }
+    }
+
+    // bunk set: stacked pair against a curved side wall
+    auto bunk = [&](float bx, float side) {
+        float zc = side * 0.85f;
+        float z0 = zc - 0.27f, z1 = zc + 0.27f;
+        float x0 = bx - 0.28f, x1 = bx + 0.28f;
+        const float COL_MAT[3]   = { 0.16f, 0.22f, 0.30f };
+        const float COL_PILOW[3] = { 0.24f, 0.31f, 0.39f };
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
+        // four corner posts
+        glPushMatrix(); glTranslatef(x0, 0.05f, z1); glScalef(0.045f, 1.15f, 0.045f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(x1, 0.05f, z1); glScalef(0.045f, 1.15f, 0.045f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(x0, 0.05f, z0); glScalef(0.045f, 1.15f, 0.045f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(x1, 0.05f, z0); glScalef(0.045f, 1.15f, 0.045f); drawCube(1.0f); glPopMatrix();
+        // rails + deck plate
+        glPushMatrix(); glTranslatef(bx, -0.42f, zc); glScalef(0.56f, 0.05f, 0.55f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(bx,  0.62f, zc); glScalef(0.56f, 0.05f, 0.55f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(bx, -0.42f, z0); glScalef(0.56f, 0.05f, 0.04f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(bx, -0.42f, z1); glScalef(0.56f, 0.05f, 0.04f); drawCube(1.0f); glPopMatrix();
+        // bottom + top berths (dark blue-grey mattresses)
+        cabSurface(COL_MAT, SPEC_CONS, 30);
+        glColor3f(COL_MAT[0], COL_MAT[1], COL_MAT[2]);
+        glPushMatrix(); glTranslatef(bx, -0.28f, zc); glScalef(0.50f, 0.13f, 0.50f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(bx,  0.30f, zc); glScalef(0.50f, 0.13f, 0.50f); drawCube(1.0f); glPopMatrix();
+        // pillows
+        cabSurface(COL_PILOW, SPEC_CONS, 40);
+        glColor3f(COL_PILOW[0], COL_PILOW[1], COL_PILOW[2]);
+        glPushMatrix(); glTranslatef(bx - 0.20f, -0.17f, zc); glScalef(0.16f, 0.07f, 0.30f); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(bx - 0.20f,  0.41f, zc); glScalef(0.16f, 0.07f, 0.30f); drawCube(1.0f); glPopMatrix();
+    };
+    bunk(-2.20f, -1.0f);
+    bunk(-2.76f, -1.0f);
+    bunk(-2.20f,  1.0f);
+    bunk(-2.76f,  1.0f);
+
+    // storage lockers + bottles against the far wall
+    for (int s = -1; s <= 1; s += 2) {
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
+        glPushMatrix();
+        glTranslatef(-4.30f, 0.05f, s * 0.55f);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
+        glScalef(0.16f, 1.05f, 0.44f);
+        drawCube(1.0f);
+        glPopMatrix();
+        for (int d3 = 0; d3 < 2; d3++) {
+            glDisable(GL_LIGHTING);
+            glPushMatrix();
+            glTranslatef(-4.32f, -0.10f + d3 * 0.55f, s * 0.55f);
+            glColor3f(COL_MONBG[0], COL_MONBG[1], COL_MONBG[2]);
+            glScalef(0.02f, 0.36f, 0.30f);
+            drawCube(1.0f);
+            glPopMatrix();
+            glEnable(GL_LIGHTING);
+        }
+        // bottles on the deck beside each locker
+        for (int b2 = 0; b2 < 2; b2++) {
+            cabSurface(COL_PANEL, SPEC_CONS, 60);
+            glPushMatrix();
+            glTranslatef(-4.34f, CR_FY + 0.02f + b2 * 0.16f, s * 0.92f);
+            glRotatef(-90, 1, 0, 0);
+            glColor3f(0.08f, 0.16f, 0.20f);
+            drawCylinder(0.045f, 0.26f, 10);
+            glColor3f(0.30f, 0.34f, 0.38f);
+            drawCone(0.045f, 0.06f, 10);
+            glPopMatrix();
+        }
+    }
+    // lockers' vertical vent strips on the facing (door) side
+    for (int s = -1; s <= 1; s += 2) {
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glTranslatef(-4.24f, 0.40f, s * 0.55f);
+        glColor3f(0.03f, 0.04f, 0.06f);
+        glScalef(0.01f, 0.60f, 0.30f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+    }
+
+    // mess table near the centre of the crew room (solid - player walks around)
+    cabSurface(COL_PANEL, SPEC_CONS, 60);
+    glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
+    glPushMatrix();
+    glTranslatef(-3.15f, CR_FY + 0.42f, 0.0f);
+    glScalef(0.90f, 0.035f, 0.50f);
+    drawCube(1.0f);
+    glPopMatrix();
+    for (int txm = -1; txm <= 1; txm += 2) {
+        for (int tzm = -1; tzm <= 1; tzm += 2) {
+            glPushMatrix();
+            glTranslatef(-3.15f + txm * 0.40f, CR_FY + 0.21f, tzm * 0.21f);
+            glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+            glScalef(0.05f, 0.42f, 0.05f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+    }
+    glDisable(GL_LIGHT6);
+
+    // ------------------------------------------------------------------
     // 8. AFT BULKHEAD - round hatch, cabinets, nav display, standing officer
     // ------------------------------------------------------------------
+    // aft bulkhead cut with a full-height doorway to the crew quarters:
+    // left/right jambs, header above the door and a low coaming threshold.
+    // The doorway opening (z +- CREW_HALF, y coaming->door top) stays open so
+    // the crew quarters show through once the door swings clear of it.
+    const float doorY0  = CR_FY + 0.10f;                  // coaming top / door bottom
+    const float doorTop = doorY0 + 0.92f;                 // door top (above walking head)
     cabSurface(COL_HULL, SPEC_ALL, 40);
-    glPushMatrix();
-    glTranslatef(CR_XA, 0.18f, 0.0f);
     glColor3f(COL_HULL[0], COL_HULL[1], COL_HULL[2]);
-    glScalef(0.08f, 1.42f, 2.46f);
+    glPushMatrix();
+    glTranslatef(CR_XA, 0.18f, -0.785f);
+    glScalef(0.08f, 1.42f, 0.89f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(CR_XA, 0.18f, 0.785f);
+    glScalef(0.08f, 1.42f, 0.89f);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(CR_XA, 0.5f * (doorTop + 0.89f), 0.0f);
+    glScalef(0.08f, 0.89f - doorTop, 2.0f * CREW_HALF);
+    drawCube(1.0f);
+    glPopMatrix();
+    glPushMatrix();
+    glTranslatef(CR_XA, 0.5f * (doorY0 - 0.53f), 0.0f);
+    glScalef(0.08f, doorY0 + 0.53f, 2.0f * CREW_HALF);
     drawCube(1.0f);
     glPopMatrix();
 
@@ -3687,39 +4338,148 @@ void drawCrewCabin() {
     drawCube(1.0f);
     glPopMatrix();
 
-    // round dogged hatch
+    // ------------------------------------------------------------------
+    // PROPER BULKHEAD DOOR into the crew quarters (replaces the crawl
+    // hatch): dogged panel hinged at the port jamb, swinging into the room.
+    // The single animation is the swing (hatchOpenT 0..1, ~95 degrees).
+    // ------------------------------------------------------------------
+    const float doorAng = hatchOpenT * 95.0f;
+    const float hingeZ  = -CREW_HALF;
+    const float doorW   = 2.0f * CREW_HALF;
+
+    // fixed dark jamb frame hugging the cut opening (control-room side)
     cabSurface(COL_TRIM, SPEC_ALL, 40);
-    glPushMatrix();
-    glTranslatef(CR_XA + 0.02f, 0.12f, 0.0f);
-    glRotatef(90, 0, 1, 0);
     glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-    drawCylinder(0.34f, 0.05f, 26);
-    glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-    drawDisk(0.0f, 0.34f, 26);
-    glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
-    drawDisk(0.12f, 0.30f, 24);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslatef(CR_XA + 0.07f, 0.12f, 0.0f);
-    for (int h = 0; h < 6; h++) {
+    for (int sjm = -1; sjm <= 1; sjm += 2) {
         glPushMatrix();
-        glRotatef((float)h * 60.0f, 1, 0, 0);
-        glTranslatef(0.0f, 0.16f, 0.0f);
-        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-        glScalef(0.04f, 0.30f, 0.03f);
+        glTranslatef(CR_XA + 0.045f, 0.5f * (doorY0 + doorTop), sjm * CREW_HALF);
+        glScalef(0.025f, doorTop - doorY0, 0.05f);
         drawCube(1.0f);
         glPopMatrix();
     }
-    glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-    drawSphere(0.045f, 8, 6);
+    glPushMatrix();
+    glTranslatef(CR_XA + 0.045f, doorTop, 0.0f);
+    glScalef(0.025f, 0.05f, doorW);
+    drawCube(1.0f);
     glPopMatrix();
-    for (int dg = 0; dg < 6; dg++) {
-        float a = (float)dg * 1.0471975f;
+
+    // hinged door leaf (swings into the crew quarters on the shared state)
+    {
         glPushMatrix();
-        glTranslatef(CR_XA - 0.005f, 0.12f + sin(a) * 0.30f, cos(a) * 0.30f);
-        glRotatef((float)dg * 60.0f, 1, 0, 0);
+        glTranslatef(CR_XA, doorY0, hingeZ);
+        glRotatef(-doorAng, 0, 1, 0);
+
+        // leaf plate + inner stamped face
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
         glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
-        glScalef(0.03f, 0.09f, 0.03f);
+        glPushMatrix();
+        glTranslatef(0.0f, 0.0f, 0.5f * doorW);
+        glScalef(0.045f, doorTop - doorY0, doorW);
+        drawCube(1.0f);
+        glPopMatrix();
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
+        glPushMatrix();
+        glTranslatef(0.03f, 0.0f, 0.5f * doorW);
+        glScalef(0.014f, doorTop - doorY0 - 0.10f, doorW - 0.10f);
+        drawCube(1.0f);
+        glPopMatrix();
+
+        // round inspection window in the door
+        glDisable(GL_LIGHTING);
+        glPushMatrix();
+        glTranslatef(0.035f, 0.46f + 0.06f, 0.5f * doorW);
+        glRotatef(90, 0, 1, 0);
+        glColor3f(0.05f, 0.08f, 0.12f);
+        drawDisk(0.0f, 0.115f, 16);
+        glColor3f(COL_STRIP[0], COL_STRIP[1], COL_STRIP[2]);
+        drawTorus(0.115f, 0.025f, 10, 18);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+
+        // three horizontal dogging bars riding with the leaf
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+        for (int db = 0; db < 3; db++) {
+            glPushMatrix();
+            glTranslatef(0.032f, 0.20f + db * 0.26f, 0.5f * doorW);
+            glScalef(0.015f, 0.045f, doorW - 0.12f);
+            drawCube(1.0f);
+            glPopMatrix();
+        }
+        // handle: vertical lever bar beside the hinge
+        glPushMatrix();
+        glTranslatef(0.0f, 0.5f * (doorTop - doorY0), 0.06f);
+        glScalef(0.03f, 0.40f, 0.04f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPopMatrix();
+    }
+
+    // door open / close BUTTON mounted on the header above the doorway.
+    // Press it with the mouse (screen-space hit test in mouse()) or press E.
+    {
+        const float btnX = CABIN_BTN_X + 0.05f;
+        cabSurface(COL_PANEL, SPEC_CONS, 60);
+        glColor3f(COL_PANEL[0], COL_PANEL[1], COL_PANEL[2]);
+        glPushMatrix();
+        glTranslatef(btnX, CABIN_BTN_Y, CABIN_BTN_Z);
+        glScalef(0.05f, 0.34f, 0.22f);
+        drawCube(1.0f);
+        glPopMatrix();
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+        glPushMatrix();
+        glTranslatef(btnX + 0.02f, CABIN_BTN_Y + 0.10f, CABIN_BTN_Z);
+        glRotatef(90, 0, 1, 0);
+        drawTorus(0.055f, 0.016f, 10, 16);
+        glPopMatrix();
+        glColor3f(0.85f, 0.72f, 0.35f);
+        glPushMatrix();
+        glTranslatef(btnX + 0.035f, CABIN_BTN_Y + 0.10f, CABIN_BTN_Z);
+        glRotatef(90, 0, 1, 0);
+        drawCylinder(0.042f, 0.028f, 12);
+        glPopMatrix();
+        // status LED: green when the door is open, red when closed (self-lit)
+        glDisable(GL_LIGHTING);
+        glColor3f(hatchDirOpen ? 0.12f : 0.50f, hatchDirOpen ? 0.95f : 0.05f, 0.08f);
+        glPushMatrix();
+        glTranslatef(btnX + 0.025f, CABIN_BTN_Y - 0.14f, CABIN_BTN_Z);
+        glScalef(0.012f, 0.035f, 0.13f);
+        drawCube(1.0f);
+        glPopMatrix();
+        glEnable(GL_LIGHTING);
+    }
+
+    // fire extinguisher mounted on the bulkhead beside the door (right side)
+    {
+        const float COL_FE[3] = { 0.72f, 0.10f, 0.10f };
+        cabSurface(COL_FE, SPEC_CONS, 60);
+        glColor3f(COL_FE[0], COL_FE[1], COL_FE[2]);
+        // mounting bracket
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        glPushMatrix();
+        glTranslatef(CR_XA + 0.04f, 0.30f, 0.47f);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+        glScalef(0.09f, 0.05f, 0.12f);
+        drawCube(1.0f);
+        glPopMatrix();
+        // red body + nozzle
+        cabSurface(COL_FE, SPEC_CONS, 60);
+        glPushMatrix();
+        glTranslatef(CR_XA + 0.01f, 0.24f, 0.47f);
+        glRotatef(-90, 1, 0, 0);
+        glColor3f(COL_FE[0], COL_FE[1], COL_FE[2]);
+        drawCylinder(0.055f, 0.42f, 12);
+        drawDisk(0.0f, 0.055f, 12);
+        drawTorus(0.045f, 0.012f, 10, 18);
+        glPopMatrix();
+        // dark neck cone + handle
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        glPushMatrix();
+        glTranslatef(CR_XA + 0.04f, 0.50f, 0.47f);
+        glColor3f(COL_TRIM[0], COL_TRIM[1], COL_TRIM[2]);
+        glScalef(0.05f, 0.03f, 0.05f);
         drawCube(1.0f);
         glPopMatrix();
     }
@@ -3836,13 +4596,20 @@ glColor3f(0.7f, 0.7f, 0.7f);
     if (cameraMode == CAM_CONTROL_SCREEN) {
         drawText(windowWidth - 304, 149, "W/A/S/D: Walk", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 134, "Mouse drag: Look around", GLUT_BITMAP_HELVETICA_12);
-        drawText(windowWidth - 304, 119, "C: Camera  V: External", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 119, "C/V or CLICK: Camera", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 104, "ESC: Menu", GLUT_BITMAP_HELVETICA_12);
+        if (cabinNearHatch()) {
+            glColor3f(0.9f, 0.9f, 0.95f);
+            drawText(windowWidth - 304, 89,
+                     hatchDirOpen ? "Click door button / E: Close door"
+                                  : "Click door button / E: Open door",
+                     GLUT_BITMAP_HELVETICA_12);
+        }
     } else {
         drawText(windowWidth - 304, 149, "W/S: Fwd/Bwd  A/D: Turn", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 134, "R/F: Up/Down  Q/E: Roll", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 119, "L: Lights  C: Camera", GLUT_BITMAP_HELVETICA_12);
-        drawText(windowWidth - 304, 104, "Space: Stop  ESC: Menu/Exit", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 104, "Space: Stop  ESC: Options (floor)", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 89,  "Mouse: Orbit (Ext view)", GLUT_BITMAP_HELVETICA_12);
     }
 
@@ -3992,6 +4759,8 @@ void setupLighting() {
 
     if (!sub.headlightsOn) {
         glDisable(GL_LIGHT2);
+        glDisable(GL_LIGHT4);
+        glDisable(GL_LIGHT5);
     }
 }
 
@@ -4189,6 +4958,8 @@ void updateSubmarine() {
     for (int i = (int)bubbles.size() - 1; i >= 0; i--) {
         bubbles[i].y += bubbles[i].speed;
         bubbles[i].wobblePhase += 0.05f;
+        // Solid hull barrier - bubbles that rise into the hull slide out of it
+        resolveSubHullBoundary(bubbles[i].x, bubbles[i].y, bubbles[i].z, 1.15f);
         if (bubbles[i].y > (diveTransition > 0.5f ? sub.y + 5.0f : 2.0f)) {
             bubbles.erase(bubbles.begin() + i);
         }
@@ -4203,6 +4974,13 @@ void updateSubmarine() {
         f.animPhase += 0.02f;
         f.x += cos(f.angle) * f.speed;
         f.z += sin(f.angle) * f.speed;
+
+        // Solid hull barrier - a fish that drifted into the hull is pushed
+        // back out (with a little extra room for its body) and turns to
+        // swim away from the submarine
+        if (resolveSubHullBoundary(f.x, f.y, f.z, 1.9f)) {
+            f.angle = atan2f(f.z - sub.z, f.x - sub.x);
+        }
 
         // Slight direction changes
         f.angle += (rand() % 100 - 50) * 0.0005f;
@@ -4300,6 +5078,16 @@ void updateCrewWalk() {
     if (gameState != STATE_PLAYING) return;
     if (cameraMode != CAM_CONTROL_SCREEN) return;
 
+    // Door swing animation (shared door state, runs even while standing).
+    // ~1.2 s either way at ~60 fps.
+    if (hatchDirOpen && hatchOpenT < 1.0f) {
+        hatchOpenT += 0.014f;
+        if (hatchOpenT > 1.0f) hatchOpenT = 1.0f;
+    } else if (!hatchDirOpen && hatchOpenT > 0.0f) {
+        hatchOpenT -= 0.014f;
+        if (hatchOpenT < 0.0f) hatchOpenT = 0.0f;
+    }
+
     float yawR = cam.freeYaw * DEG_TO_RAD;
     float mx = 0.0f, mz = 0.0f;
     if (walkKeys['w'] || walkKeys['W']) { mx += cos(yawR); mz += sin(yawR); }
@@ -4313,11 +5101,80 @@ void updateCrewWalk() {
     cam.freeX += (mx / len) * step;
     cam.freeZ += (mz / len) * step;
 
-    // Hull walls
-    if (cam.freeX < -1.5f) cam.freeX = -1.5f;
-    if (cam.freeX > 1.06f) cam.freeX = 1.06f;
+    // Hull walls (side limits unchanged)
     if (cam.freeZ < -1.2f) cam.freeZ = -1.2f;
     if (cam.freeZ > 1.2f) cam.freeZ = 1.2f;
+
+    // Crew-quarters door: passable once the door has swung clear. Walking is
+    // confined to the room's own interior past the bulkhead wall so nobody is
+    // ever locked on either side.
+    bool inRoom   = (cam.freeX < CREW_HATCH_X + 0.10f);
+    bool passDoor = (hatchOpenT > 0.6f && fabs(cam.freeZ) < CREW_HALF);
+    if (inRoom) {
+        // inside the crew quarters
+        if (cam.freeX < CREW_X_FAR) cam.freeX = CREW_X_FAR;
+        if (cam.freeX > CREW_HATCH_X + 0.10f) cam.freeX = CREW_HATCH_X + 0.10f;
+        // keep the player inside the circular shaft while crossing the wall
+        if (cam.freeX > CREW_HATCH_X - 0.12f) {
+            if (cam.freeZ < -CREW_HALF) cam.freeZ = -CREW_HALF;
+            if (cam.freeZ >  CREW_HALF) cam.freeZ =  CREW_HALF;
+        }
+    } else {
+        float xLow = -1.5f;
+        if (passDoor && cam.freeX < -1.25f) {
+            // funnel the player toward the doorway as it is approached
+            xLow = CREW_HATCH_X + 0.10f;
+            if (cam.freeZ < -CREW_HALF) cam.freeZ = -CREW_HALF;
+            if (cam.freeZ >  CREW_HALF) cam.freeZ =  CREW_HALF;
+        }
+        if (cam.freeX < xLow) cam.freeX = xLow;
+        if (cam.freeX > 1.06f) cam.freeX = 1.06f;
+    }
+
+    // Solid furniture / fittings: chairs, bunks, mess table and lockers are
+    // blocked like the walls, so nobody can walk through them.
+    {
+        static const int NSOLID = 9;
+        float sX0[NSOLID], sX1[NSOLID], sZ0[NSOLID], sZ1[NSOLID];
+        int nS = 0;
+        // control-room side chairs (two side stations)
+        for (int ch = -1; ch <= 1; ch += 2) {
+            float cz = ch * 0.86f;
+            sX0[nS] = -0.05f - 0.26f; sX1[nS] = -0.05f + 0.26f;
+            sZ0[nS] = cz - 0.34f;     sZ1[nS] = cz + 0.30f;
+            nS++;
+        }
+        // crew bunks (two stacked pairs, port + starboard)
+        for (int bd = -1; bd <= 1; bd += 2) {
+            for (int bk = 0; bk < 2; bk++) {
+                float bx = -2.20f - bk * 0.56f;
+                float zc = bd * 0.85f;
+                sX0[nS] = bx - 0.30f; sX1[nS] = bx + 0.30f;
+                sZ0[nS] = zc - 0.30f; sZ1[nS] = zc + 0.30f;
+                nS++;
+            }
+        }
+        // mess table near the centre of the crew room
+        sX0[nS] = -3.60f; sX1[nS] = -2.70f; sZ0[nS] = -0.26f; sZ1[nS] = 0.26f; nS++;
+        // far-wall storage lockers
+        for (int lk = -1; lk <= 1; lk += 2) {
+            sX0[nS] = -4.42f;  sX1[nS] = -4.18f;
+            sZ0[nS] = lk * 0.55f - 0.24f; sZ1[nS] = lk * 0.55f + 0.24f;
+            nS++;
+        }
+        const float pHX = 0.16f, pHZ = 0.19f; // player half-extents
+        for (int i = 0; i < nS; i++) {
+            float minX = sX0[i] - pHX, maxX = sX1[i] + pHX;
+            float minZ = sZ0[i] - pHZ, maxZ = sZ1[i] + pHZ;
+            if (cam.freeX < minX || cam.freeX > maxX || cam.freeZ < minZ || cam.freeZ > maxZ) continue;
+            float dxL = cam.freeX - minX, dxR = maxX - cam.freeX;
+            float dzL = cam.freeZ - minZ, dzR = maxZ - cam.freeZ;
+            float pxPen = (dxL < dxR) ? dxL : dxR;
+            float pzPen = (dzL < dzR) ? dzL : dzR;
+            if (pxPen < pzPen) cam.freeX += (dxL < dxR) ? -pxPen : pxPen;
+            else               cam.freeZ += (dzL < dzR) ? -pzPen : pzPen;
+        }
+    }
 
     // Stop just short of the forward dashboard console
     if (cam.freeX > 1.04f) cam.freeX = 1.04f;
@@ -4575,6 +5432,9 @@ void display() {
 // ============================================================
 // KEYBOARD
 // ============================================================
+// The options panel (START MISSION / CREW CABIN / EXTERNAL VIEW ...) is only
+// offered while the submarine sits close above the sea floor - in open water
+// the menu stays hidden and ESC doesn't pop it up.
 void keyboardDown(unsigned char key, int x, int y) {
     (void)x; (void)y;
     walkKeys[(size_t)key] = true;
@@ -4656,7 +5516,11 @@ void keyboardDown(unsigned char key, int x, int y) {
             cameraMode = CAM_EXTERNAL;
             userCameraChoice = true;
             if (cam.orbitDistance > 16.0f || cam.orbitDistance < 10.0f) { cam.orbitDistance = 14.0f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
+        } else if (key == 'e' || key == 'E') {
+            // open/close the crew-quarters door (only when stood at the door)
+            if (cabinNearHatch()) hatchDirOpen = !hatchDirOpen;
         } else if (key == 27) {
+            // ESC - pause and open the menu from the crew cabin too
             gameState = STATE_MENU;
             menuSelection = 0;
             sub.targetSpeed = 0;
@@ -4716,7 +5580,7 @@ void keyboardDown(unsigned char key, int x, int y) {
     case ' ':
         sub.targetSpeed = 0;
         break;
-    case 27: // ESC
+    case 27: // ESC - pause and return to the menu from any camera mode
         gameState = STATE_MENU;
         menuSelection = 0;
         sub.targetSpeed = 0;
@@ -4778,12 +5642,82 @@ void specialKeys(int key, int x, int y) {
 // ============================================================
 int mouseLastX = 0, mouseLastY = 0;
 int mouseDragging = 0;
+int btnPressX = 0, btnPressY = 0;
+bool btnDown = false, clickPending = false;
+
+// Screen-space hit test for the door-open button (first-person cabin view).
+// Rebuilds the exact interior camera basis + perspective and projects the
+// button centre to window pixels, so clicking the drawn button toggles it.
+static bool cabinButtonHit(int mx, int my) {
+    if (cameraMode != CAM_CONTROL_SCREEN) return false;
+    float subYawRad = sub.yaw * DEG_TO_RAD;
+    float cosY = cosf(subYawRad), sinY = sinf(subYawRad);
+    // button centre in interior-local cabin coords (matches the drawn button)
+    float blx = (CABIN_BTN_X + 0.05f) * INT_SX;
+    float bly =  CABIN_BTN_Y * INT_SY;
+    float blz =  CABIN_BTN_Z * INT_SZ;
+    float bx = sub.x + blx * cosY + blz * sinY;
+    float bz = sub.z - blx * sinY + blz * cosY;
+    float by = sub.y + bly;
+    // eye position (identical to setupCamera for CAM_CONTROL_SCREEN)
+    float lx = cam.freeX * INT_SX, lz = cam.freeZ * INT_SZ;
+    float ex = sub.x + lx * cosY + lz * sinY;
+    float ez = sub.z - lx * sinY + lz * cosY;
+    float ey = sub.y + INT_EYE * INT_SY + cam.freeY;
+    // forward / side / up basis (same convention as gluLookAt)
+    float fyawR = cam.freeYaw * DEG_TO_RAD;
+    float fpitR = cam.freePitch * DEG_TO_RAD;
+    float cfp = cosf(fpitR);
+    float fx = cosf(fyawR) * cfp, fy = sinf(fpitR), fz = sinf(fyawR) * cfp;
+    float sl = sqrtf(fz * fz + fx * fx);
+    if (sl < 1e-5f) return false;
+    float sx = -fz / sl, sz = fx / sl, sy = 0.0f;   // side = cross(fwd, up)
+    float ux = sy * fz - sz * fy;                 // up = cross(side, fwd)
+    float uy = sz * fx - sx * fz;
+    float uz = sx * fy - sy * fx;
+    float dx = bx - ex, dy = by - ey, dz = bz - ez;
+    float cF = dx * fx + dy * fy + dz * fz;         // depth along view
+    if (cF < 0.2f) return false;
+    float cR = dx * sx + dy * sy + dz * sz;
+    float cU = dx * ux + dy * uy + dz * uz;
+    double halfFov = 34.0 * PI / 180.0;             // interior FOV is 68 deg
+    double th = tan(halfFov);
+    double aspect = (double)windowWidth / (double)windowHeight;
+    double px = (cR / (cF * th * aspect)) * windowWidth * 0.5 + windowWidth * 0.5;
+    double pyN = (cU / (cF * th)) * windowHeight * 0.5 + windowHeight * 0.5;
+    double myGL = (double)windowHeight - pyN;       // GLUT mouse is top-left origin
+    double dist = sqrt((px - mx) * (px - mx) + (myGL - my) * (myGL - my));
+    return dist < 30.0;
+}
 
 void mouse(int button, int state, int mx, int my) {
     if (button == GLUT_LEFT_BUTTON) {
-        mouseDragging = (state == GLUT_DOWN);
-        mouseLastX = mx;
-        mouseLastY = my;
+        if (state == GLUT_DOWN) {
+            mouseDragging = 1;
+            mouseLastX = mx;
+            mouseLastY = my;
+            btnPressX = mx;
+            btnPressY = my;
+            btnDown = true;
+            clickPending = true;
+        } else {
+            mouseDragging = 0;
+            btnDown = false;
+            // A clean click (button without dragging) in the crew cabin:
+            // the door button toggles the door, any other click switches
+            // the camera mode to the next one (same as the C key).
+            if (clickPending) {
+                clickPending = false;
+                if (gameState == STATE_PLAYING && cameraMode == CAM_CONTROL_SCREEN) {
+                    if (cabinButtonHit(btnPressX, btnPressY)) {
+                        hatchDirOpen = !hatchDirOpen;
+                    } else {
+                        cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
+                        userCameraChoice = true;
+                    }
+                }
+            }
+        }
     }
     // Zoom (wheel = buttons 3/4, works on all GLUT builds)
     if (button == 3) {
@@ -4799,6 +5733,12 @@ void mouse(int button, int state, int mx, int my) {
 
 void motion(int mx, int my) {
     if (mouseDragging) {
+        // any real drag cancels the pending click (keeps drag-look working)
+        if (btnDown && clickPending) {
+            int cdx = mx - btnPressX;
+            int cdy = my - btnPressY;
+            if (cdx * cdx + cdy * cdy > 42) clickPending = false; // > ~6px
+        }
         int dx = mx - mouseLastX;
         int dy = my - mouseLastY;
 
@@ -4849,9 +5789,12 @@ void reshape(int w, int h) {
 // ============================================================
 void timer(int value) {
     (void)value;
-    updateIntro();
-    updateSubmarine();
-    updateCrewWalk();
+    // Pause the simulation while the menu is open
+    if (gameState != STATE_MENU) {
+        updateIntro();
+        updateSubmarine();
+        updateCrewWalk();
+    }
     glutPostRedisplay();
     glutTimerFunc(16, timer, 0); // ~60 FPS
 }
