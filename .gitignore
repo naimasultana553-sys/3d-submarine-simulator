@@ -1,0 +1,12 @@
+# Build artifacts
+*.exe
+*.o
+*.obj
+*.layout
+*.depend
+bin/
+obj/
+
+# Duplicate working copy (authoritative source lives in "3D Submarine Simulator/")
+/submarine.cpp
+gccdump.s
