@@ -1,4 +1,4 @@
-#ifdef _WIN32
+﻿#ifdef _WIN32
 #include <windows.h>
 #endif
 #include <GL/gl.h>
@@ -60,7 +60,7 @@ const float SUB_SCALE = 1.4f;
 const float SUB_LEN = 1.5f;
 const float BOW_TIP = 3.9f * 1.4f * 1.5f;
 
-// Interior scale for crew room — geometry enlarged more than eye height
+// Interior scale for crew room ΓÇö geometry enlarged more than eye height
 // so the space genuinely feels bigger when walking around.
 const float INT_SX = 1.70f;   // stretch front-to-back (length)
 const float INT_SY = 1.30f;   // modest height increase
@@ -283,7 +283,7 @@ void drawTorus(float inner, float outer, int sides = 16, int rings = 32) {
 
 // ============================================================
 // PROCEDURAL TEXTURES (realistic sky / water / metal / sand,
-// soft cloud sprites — generated in code, no image files needed)
+// soft cloud sprites ΓÇö generated in code, no image files needed)
 // ============================================================
 GLuint texSky = 0, texWater = 0, texSand = 0, texHull = 0, texPuff = 0, texOceanView = 0;
 
@@ -855,7 +855,7 @@ void drawSubmarineBody() {
 
     // ---- panoramic bow viewport like FRONT VIEW reference: wide horizontal
     //      letterbox recessed FLUSH into the bow face, thin frame, no
-    //      forward balcony — window plane is Y-Z facing +X ----
+    //      forward balcony ΓÇö window plane is Y-Z facing +X ----
     {
         const float hw = 0.52f;
         const float hh = 0.20f;
@@ -1270,7 +1270,8 @@ void drawHeadlightBeam(float lx, float ly, float lz, float len, float farR) {
 void drawBeamCone(float lx, float ly, float lz, float len, float nearR, float farR) {
     glPushMatrix();
     glTranslatef(lx, ly, lz);
-    glRotatef(90, 0, 1, 0);
+    // cone vertices below are built along +x (the sub's forward axis) so no
+    // extra rotation is applied - the beam shoots straight out of the bow.
     const int SEG = 18;
     const float PI2 = (float)(2.0 * PI);
     glBegin(GL_TRIANGLE_FAN);
@@ -1317,9 +1318,10 @@ void drawFullSubmarine() {
     glScalef(SUB_SCALE * SUB_LEN, SUB_SCALE, SUB_SCALE);
     glDisable(GL_BLEND);
     glDisable(GL_TEXTURE_2D);
+    bool fogBefore = glIsEnabled(GL_FOG) ? true : false;
     glDisable(GL_FOG);
     drawSubmarineBody();
-    glEnable(GL_FOG);
+    if (fogBefore) glEnable(GL_FOG);
     drawPropeller();
     drawSubmarineHeadlights();
 
@@ -2110,7 +2112,9 @@ void drawFish() {
         glTranslatef(f.x, f.y, f.z);
 
         float displayAngle = f.angle * 180.0f / PI;
-        glRotatef(displayAngle, 0, 1, 0);
+        // fish swim along (cos a, 0, +sin a); the right-handed rotation would
+        // mirror +x to -z, so negate it so the head leads the motion
+        glRotatef(-displayAngle, 0, 1, 0);
 
         float tailWag = sin(t * 10 + f.animPhase) * 15.0f;
 
@@ -2315,10 +2319,12 @@ void drawSharks() {
         float tailWag = sin(introTimer * 0.004f + i * 2.0f) * 12.0f;
         glPushMatrix();
         glTranslatef(sx, s.cy, sz);
-        glRotatef(-(s.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
+        // tangent of the orbit is (-sin a, 0, cos a); -90 aligns the head (+x)
+        // with that travel direction (the old +90 made it swim backwards)
+        glRotatef(-(s.angle * 180.0f / PI) - 90.0f, 0, 1, 0);
         glScalef(s.size, s.size, s.size);
 
-        // deep steel blue-grey — no more pale / white-looking sharks
+        // deep steel blue-grey ΓÇö no more pale / white-looking sharks
         float topR = 0.30f, topG = 0.38f, topB = 0.48f;
         float finR = 0.24f, finG = 0.30f, finB = 0.38f;
         GLfloat sharkSpec[] = { 0.10f, 0.12f, 0.16f, 1.0f };
@@ -2448,7 +2454,8 @@ void drawRays() {
         float flap = sin(introTimer * 0.003f + r.phase) * 0.12f;
         glPushMatrix();
         glTranslatef(rx, r.cy + flap * 2.0f, rz);
-        glRotatef(-(r.angle * 180.0f / PI) + 90.0f, 0, 1, 0);
+        // same tangent fix as the sharks: head (+x) leads the orbit
+        glRotatef(-(r.angle * 180.0f / PI) - 90.0f, 0, 1, 0);
         glColor3f(0.25f, 0.30f, 0.36f);
         glScalef(r.size * 1.1f, r.size * 0.12f + fabs(flap) * 0.4f, r.size * 0.95f);
         drawSphere(1.0f, 12, 8);
@@ -2553,6 +2560,7 @@ void drawParticles() {
 
     for (size_t i = 0; i < particles.size(); i++) {
         Particle& p = particles[i];
+        if (insideCrewCabin(p.x, p.y, p.z)) continue;
         glPushMatrix();
         glTranslatef(p.x, p.y, p.z);
         glColor4f(0.7f, 0.8f, 0.9f, p.alpha * diveTransition);
@@ -2816,9 +2824,15 @@ void drawInterior() {
         glTranslatef(c.x, c.y + 0.33f + headBob, c.z);
         glColor3f(0.82f, 0.70f, 0.60f);
         drawSphere(0.085f, 10, 8);
-        glColor3f(0.16f, 0.18f, 0.24f);
+        // navy cap: white crown dome + dark visor
+        glColor3f(0.93f, 0.94f, 0.95f);
         glTranslatef(0, 0.055f, 0);
-        drawCylinder(0.085f, 0.03f, 10);
+        glScalef(0.085f, 0.045f, 0.085f);
+        drawSphere(1.0f, 10, 8);
+        glColor3f(0.10f, 0.12f, 0.14f);
+        glTranslatef(0, 0.002f, 0.075f);
+        glScalef(1.05f, 0.6f, 0.4f);
+        drawSphere(1.0f, 8, 6);
         glPopMatrix();
     }
 
@@ -3444,6 +3458,66 @@ void drawCrewCabin() {
         glPopMatrix();
         glEnable(GL_LIGHTING);
     }
+    // 5b. WALL PHOTO FRAMES - two brass picture frames mounted flush on the
+    // flat panels beside the big front screen, each holding the ocean-view
+    // photo (submarine/deep sea). Mirrored positions so the room stays
+    // balanced; right-hand frame mirrors the image.
+    auto photoFrame = [&](float fy, float fz, bool mirror) {
+        const float fw = 0.24f, fh = 0.20f;      // photo opening size
+        const float bd = 0.030f;                   // brass rim thickness
+        const float fx = CR_XF - 0.05f;            // flush on the panel face
+        cabSurface(COL_TRIM, SPEC_ALL, 40);
+        glColor3f(0.58f, 0.48f, 0.30f);
+        glPushMatrix();
+        glTranslatef(fx, fy, fz);
+        glPushMatrix(); glTranslatef(0.0f,  fh/2 + bd/2, 0.0f); glScalef(0.060f, bd, fw + 2*bd); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(0.0f, -fh/2 - bd/2, 0.0f); glScalef(0.060f, bd, fw + 2*bd); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(0.0f, 0.0f,  fw/2 + bd/2); glScalef(0.060f, fh + 2*bd, bd); drawCube(1.0f); glPopMatrix();
+        glPushMatrix(); glTranslatef(0.0f, 0.0f, -fw/2 - bd/2); glScalef(0.060f, fh + 2*bd, bd); drawCube(1.0f); glPopMatrix();
+        // dark backing recess + the photo itself (faces into the room)
+        glPushMatrix();
+        glTranslatef(-0.012f, 0.0f, 0.0f);
+        glColor3f(0.03f, 0.04f, 0.06f);
+        glScalef(0.012f, fh, fw);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPushMatrix();
+        glTranslatef(-0.022f, 0.0f, 0.0f);
+        glDisable(GL_LIGHTING);
+        if (texOceanView) {
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, texOceanView);
+            glColor3f(1.0f, 1.0f, 1.0f);
+        } else {
+            glColor3f(0.10f, 0.28f, 0.48f);
+        }
+        glBegin(GL_QUADS);
+        if (mirror) {
+            glTexCoord2f(1, 0); glVertex3f(0.0f, -fh/2, -fw/2);
+            glTexCoord2f(0, 0); glVertex3f(0.0f, -fh/2,  fw/2);
+            glTexCoord2f(0, 1); glVertex3f(0.0f,  fh/2,  fw/2);
+            glTexCoord2f(1, 1); glVertex3f(0.0f,  fh/2, -fw/2);
+        } else {
+            glTexCoord2f(0, 0); glVertex3f(0.0f, -fh/2, -fw/2);
+            glTexCoord2f(1, 0); glVertex3f(0.0f, -fh/2,  fw/2);
+            glTexCoord2f(1, 1); glVertex3f(0.0f,  fh/2,  fw/2);
+            glTexCoord2f(0, 1); glVertex3f(0.0f,  fh/2, -fw/2);
+        }
+        glEnd();
+        if (texOceanView) { glBindTexture(GL_TEXTURE_2D, 0); glDisable(GL_TEXTURE_2D); }
+        glEnable(GL_LIGHTING);
+        glPopMatrix();
+        // thin inner mat strip around the opening
+        glPushMatrix();
+        glTranslatef(-0.018f, 0.0f, 0.0f);
+        glColor3f(0.92f, 0.88f, 0.78f);
+        glScalef(0.006f, fh + 2*bd, fw + 2*bd);
+        drawCube(1.0f);
+        glPopMatrix();
+        glPopMatrix();
+    };
+    photoFrame(0.72f,  1.055f, false);
+    photoFrame(0.72f, -1.055f, true);
     // main front-view screen: matte near-black border frame around the window
     // (no emission/glow - same material class as other dark cabin metal)
     const float COL_SCR_BD[3] = { 0.04f, 0.04f, 0.05f };
@@ -3898,10 +3972,37 @@ void drawCrewCabin() {
         glScalef(0.105f, 0.055f, 0.105f);
         drawSphere(1.0f, 10, 6);
         glPopMatrix();
+        // FULL-HEAD ARMY CAP: a compact navy dress-cap pulled right down over
+        // the WHOLE skull. The cap fabric -- crown, sides and back -- wraps
+        // the entire head like a snug army/beret cap: the whole scalp and all
+        // of the hair are covered by navy material, so no hair or skin shows
+        // anywhere on top or around the sides. Only the face below the brow
+        // stays visible under the front rim of the cap.
         glPushMatrix();
-        glColor3f(0.92f, 0.92f, 0.94f);
-        glTranslatef(0.0f, shY + 0.04f, 0.085f);
-        glScalef(0.11f, 0.025f, 0.03f);
+        glColor3f(0.055f, 0.062f, 0.075f);
+        glTranslatef(0.0f, shY + 0.113f, -0.003f);
+        glScalef(0.114f, 0.111f, 0.113f);
+        drawSphere(1.0f, 14, 9);
+        glPopMatrix();
+        // crisp pale brow band ringing the lower rim of the cap
+        glPushMatrix();
+        glColor3f(0.93f, 0.94f, 0.95f);
+        glTranslatef(0.0f, shY + 0.078f, -0.003f);
+        glScalef(0.117f, 0.024f, 0.117f);
+        drawCube(1.0f);
+        glPopMatrix();
+        // dark stiff visor jutting forward over the eyes from under the band
+        glPushMatrix();
+        glColor3f(0.075f, 0.085f, 0.095f);
+        glTranslatef(0.0f, shY + 0.142f, 0.112f);
+        glScalef(0.118f, 0.016f, 0.050f);
+        drawCube(1.0f);
+        glPopMatrix();
+        // small brass officer badge pinned to the front of the band
+        glPushMatrix();
+        glColor3f(0.80f, 0.64f, 0.18f);
+        glTranslatef(0.0f, shY + 0.078f, 0.116f);
+        glScalef(0.048f, 0.014f, 0.012f);
         drawCube(1.0f);
         glPopMatrix();
         if (v == 1) {
@@ -4596,7 +4697,7 @@ glColor3f(0.7f, 0.7f, 0.7f);
     if (cameraMode == CAM_CONTROL_SCREEN) {
         drawText(windowWidth - 304, 149, "W/A/S/D: Walk", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 134, "Mouse drag: Look around", GLUT_BITMAP_HELVETICA_12);
-        drawText(windowWidth - 304, 119, "C/V or CLICK: Camera", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 119, "V: View  I: Interior (no C cycle)", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 104, "ESC: Menu", GLUT_BITMAP_HELVETICA_12);
         if (cabinNearHatch()) {
             glColor3f(0.9f, 0.9f, 0.95f);
@@ -4608,7 +4709,7 @@ glColor3f(0.7f, 0.7f, 0.7f);
     } else {
         drawText(windowWidth - 304, 149, "W/S: Fwd/Bwd  A/D: Turn", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 134, "R/F: Up/Down  Q/E: Roll", GLUT_BITMAP_HELVETICA_12);
-        drawText(windowWidth - 304, 119, "L: Lights  C: Camera", GLUT_BITMAP_HELVETICA_12);
+        drawText(windowWidth - 304, 119, "L: Lights  V: External  I: Interior", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 104, "Space: Stop  ESC: Options (floor)", GLUT_BITMAP_HELVETICA_12);
         drawText(windowWidth - 304, 89,  "Mouse: Orbit (Ext view)", GLUT_BITMAP_HELVETICA_12);
     }
@@ -4624,89 +4725,6 @@ glColor3f(0.7f, 0.7f, 0.7f);
 }
 
 void drawViewportBorder() {
-    if (cameraMode == CAM_CONTROL_SCREEN) return; // crew cabin: open view, no frame
-    if (gameState != STATE_PLAYING) return;
-    if (cameraMode != CAM_INTERIOR && cameraMode != CAM_FRONT_WINDOW &&
-        cameraMode != CAM_LEFT_WINDOW && cameraMode != CAM_RIGHT_WINDOW &&
-        cameraMode != CAM_CONTROL_SCREEN) return;
-
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    gluOrtho2D(0, windowWidth, 0, windowHeight);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-    float W = (float)windowWidth, H = (float)windowHeight;
-    float S = 44.0f;
-    float T = 44.0f;
-    float B = 44.0f;
-    float R = 200.0f;
-    if (R > W * 0.25f) R = W * 0.25f;
-    float Cy = H - T - R;
-
-    glColor4f(0.26f, 0.30f, 0.35f, 0.98f);
-    glBegin(GL_QUADS);
-    glVertex2f(0, H - T); glVertex2f(W, H - T);
-    glVertex2f(W, H); glVertex2f(0, H);
-    glVertex2f(0, 0); glVertex2f(W, 0);
-    glVertex2f(W, B); glVertex2f(0, B);
-    glVertex2f(0, B); glVertex2f(S, B);
-    glVertex2f(S, Cy); glVertex2f(0, Cy);
-    glVertex2f(W - S, B); glVertex2f(W, B);
-    glVertex2f(W, Cy); glVertex2f(W - S, Cy);
-    glEnd();
-    glColor3f(0.18f,0.19f,0.21f);
-    for(float x=S*0.5f; x<W; x+=28) { glBegin(GL_POINTS); glVertex2f(x, H-T*0.5f); glVertex2f(x, B*0.5f); glEnd(); }
-    for(float y=B; y<Cy; y+=22) { glBegin(GL_POINTS); glVertex2f(S*0.5f,y); glVertex2f(W-S*0.5f,y); glEnd(); }
-
-    const int N = 24;
-    glBegin(GL_QUADS);
-    for (int i = 0; i < N; i++) {
-        float dy0 = R * i / N, dy1 = R * (i + 1) / N;
-        float y0 = Cy + dy0, y1 = Cy + dy1;
-        float xl0 = S + R - sqrt(R * R - dy0 * dy0);
-        float xl1 = S + R - sqrt(R * R - dy1 * dy1);
-        glVertex2f(0, y0); glVertex2f(xl0, y0);
-        glVertex2f(xl1, y1); glVertex2f(0, y1);
-        glVertex2f(W, y0); glVertex2f(W - xl0, y0);
-        glVertex2f(W - xl1, y1); glVertex2f(W, y1);
-    }
-    glEnd();
-
-    glPointSize(3.0f);
-    glLineWidth(1.5f);
-    glColor4f(0.42f, 0.47f, 0.52f, 0.90f);
-    glBegin(GL_LINE_STRIP);
-    glVertex2f(S, B);
-    glVertex2f(S, Cy);
-    for (int i = 0; i <= N; i++) {
-        float a = PI - (PI * 0.5f) * i / N;
-        glVertex2f(S + R + R * cos(a), Cy + R * sin(a));
-    }
-    glVertex2f(W - S - R, H - T);
-    for (int i = 0; i <= N; i++) {
-        float a = (PI * 0.5f) - (PI * 0.5f) * i / N;
-        glVertex2f(W - S - R + R * cos(a), Cy + R * sin(a));
-    }
-    glVertex2f(W - S, B);
-    glVertex2f(S, B);
-    glEnd();
-
-    glDisable(GL_BLEND);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_LIGHTING);
-
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
 }
 
 // ============================================================
@@ -4770,6 +4788,12 @@ void setupFog() {
         glDisable(GL_FOG);
         return;
     }
+    // Flat-out clear exterior: no murk or blur when watching the submarine
+    // from outside or from the free camera.
+    if (cameraMode == CAM_EXTERNAL || cameraMode == CAM_FREE) {
+        glDisable(GL_FOG);
+        return;
+    }
 
     glEnable(GL_FOG);
     glFogi(GL_FOG_MODE, GL_EXP2);
@@ -4780,7 +4804,7 @@ void setupFog() {
     // Inside the crew control room the big front bow window is the sub's live
     // external-camera feed, so it must stay sharp: lift most of the murk there
     // (the horizon/seabed/rocks still keep a gentle depth haze, but no milky
-    // fog wash over the screen). All outside cameras keep the full deep fog.
+    // fog wash over the screen). The other perimeter cameras keep the full fog.
     if (cameraMode == CAM_CONTROL_SCREEN) fogDensity *= 0.45f;
     glFogf(GL_FOG_DENSITY, fogDensity);
     glHint(GL_FOG_HINT, GL_DONT_CARE);
@@ -4809,15 +4833,23 @@ void setupCamera() {
         float t = introTimer * 0.001f;
         float pushIn = 1.0f - diveTransition * 0.4f;
         float camX = sub.x + 4.2f + sin(t * 0.4f) * 0.8f;
-        float camY = sub.y + 2.8f * pushIn + sin(t * 0.6f) * 0.2f;
-        float camZ = sub.z + 14.0f * pushIn;
+        float camY1 = sub.y + 2.8f * pushIn + sin(t * 0.6f) * 0.2f;
+        float camZ1 = sub.z + 14.0f * pushIn;
+        float camY2 = sub.y + 3.3f;
+        float camZ2 = sub.z + 12.0f;
         float lookX = sub.x + 0.3f;
-        float lookY = sub.y + 0.6f - diveTransition * 4.0f;
-        if (diveTransition > 0.4f) {
-            camY = sub.y + 3.3f;
-            camZ = sub.z + 12.0f;
-            lookY = sub.y + 0.3f;
-        }
+        float lookY1 = sub.y + 0.6f - diveTransition * 4.0f;
+        float lookY2 = sub.y + 0.3f;
+        // Smoothly ease the camera into its close dive position instead of
+        // snapping partway through the descent (no visible mid-dive jump).
+        float k = diveTransition;
+        if (k < 0.30f) k = 0.0f;
+        else if (k < 0.55f) k = (diveTransition - 0.30f) / 0.25f;
+        else k = 1.0f;
+        k = k * k * (3.0f - 2.0f * k);
+        float camY = camY1 + (camY2 - camY1) * k;
+        float camZ = camZ1 + (camZ2 - camZ1) * k;
+        float lookY = lookY1 + (lookY2 - lookY1) * k;
         gluLookAt(camX, camY, camZ, lookX, lookY, sub.z, 0, 1, 0);
         return;
     }
@@ -4924,6 +4956,22 @@ void updateSubmarine() {
     if (sub.y > 3.0f) sub.y = 3.0f;
     if (sub.y < -50.0f) sub.y = -50.0f;
 
+    // Solid seabed: the keel (hull bottom, ~1.18 hull-units below the centre)
+    // may never sink below the terrain under the hull footprint. Uses the
+    // highest floor point along the hull axis so no part of the boat buries.
+    const float keelDepth = 1.18f * SUB_SCALE;
+    const float yawR = sub.yaw * DEG_TO_RAD;
+    float floorHi = -1000.0f;
+    for (int k = -6; k <= 6; k++) {
+        float hx = k * 0.35f;                       // hull axis +-2.1
+        float fx = sub.x + hx * cosf(yawR);
+        float fz = sub.z - hx * sinf(yawR);
+        float fh = seaFloorY(fx, fz);
+        if (fh > floorHi) floorHi = fh;
+    }
+    float restY = floorHi + keelDepth;
+    if (sub.y < restY) sub.y = restY;
+
     sub.depth = -sub.y;
 
     // Generate bubbles from submarine
@@ -5014,6 +5062,9 @@ void updateSubmarine() {
         particles[i].x += particles[i].vx;
         particles[i].y += particles[i].vy;
         particles[i].z += particles[i].vz;
+        // Solid hull barrier - drifting sediment that enters the hull is
+        // pushed back out to the water, same as fish/bubbles.
+        resolveSubHullBoundary(particles[i].x, particles[i].y, particles[i].z, 0.9f);
         // Subtle attraction toward submarine
         float dx = sub.x - particles[i].x;
         float dy = sub.y - particles[i].y;
@@ -5042,8 +5093,22 @@ void updateIntro() {
         diveTransition = diveTimer / 5000.0f; // 5 second dive
         if (diveTransition > 1.0f) diveTransition = 1.0f;
 
-        // Submarine descends from surfaced waterline
-        sub.y = 0.9f - diveTransition * 14.0f;
+        // Land on the seafloor: keep descending from the surface until the
+        // keel (hull bottom, ~1.18 hull-units below the centre) rests on the
+        // terrain. The landing height uses the highest terrain point under
+        // the whole hull footprint so no part of the hull buries itself.
+        const float keelDepth = 1.18f * SUB_SCALE;
+        const float yawR = sub.yaw * DEG_TO_RAD;
+        float floorHi = -1000.0f;
+        for (int k = -6; k <= 6; k++) {
+            float hx = k * 0.35f;                       // hull axis +-2.1
+            float fx = sub.x + hx * cosf(yawR);
+            float fz = sub.z - hx * sinf(yawR);
+            float fh = seaFloorY(fx, fz);
+            if (fh > floorHi) floorHi = fh;
+        }
+        const float restY = floorHi + keelDepth;
+        sub.y = 0.9f + (restY - 0.9f) * diveTransition;
         sub.depth = -sub.y;
 
         if (diveTimer > 6000.0f) {
@@ -5315,6 +5380,26 @@ void drawIntroOverlay() {
                  GLUT_BITMAP_HELVETICA_18);
     }
 
+    // Skip-intro button (bottom centre): jump straight past the dive
+    // animation - same as pressing Enter.
+    {
+        const float bx0 = windowWidth * 0.5f - 105.0f, bx1 = windowWidth * 0.5f + 105.0f;
+        glColor4f(0.0f, 0.35f, 0.45f, 0.85f);
+        glBegin(GL_QUADS);
+        glVertex2f(bx0, 28); glVertex2f(bx1, 28);
+        glVertex2f(bx1, 76); glVertex2f(bx0, 76);
+        glEnd();
+        glColor4f(0.0f, 0.9f, 1.0f, 0.85f);
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(bx0, 28); glVertex2f(bx1, 28);
+        glVertex2f(bx1, 76); glVertex2f(bx0, 76);
+        glEnd();
+        glColor3f(1.0f, 0.95f, 0.3f);
+        drawText(windowWidth / 2 - 40, 53, "SKIP INTRO", GLUT_BITMAP_HELVETICA_18);
+        glColor3f(0.6f, 0.78f, 0.88f);
+        drawText(windowWidth / 2 - 15, 35, "ENTER", GLUT_BITMAP_HELVETICA_12);
+    }
+
     glDisable(GL_BLEND);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_LIGHTING);
@@ -5424,8 +5509,6 @@ void display() {
         drawHUD();
     }
 
-    drawViewportBorder();
-
     glutSwapBuffers();
 }
 
@@ -5485,23 +5568,24 @@ void keyboardDown(unsigned char key, int x, int y) {
 
     if (gameState == STATE_INTRO || gameState == STATE_DIVING) {
         if (key == 27) exit(0);
-        if (key == 'c' || key == 'C' || key == 'v' || key == 'V' ||
-            key == 'i' || key == 'I') {
+        // C no longer cycles cameras; only V (external) / I (interior) set a
+        // direct, already-defined angle.
+        if (key == 'v' || key == 'V' || key == 'i' || key == 'I') {
             userCameraChoice = true;
-            if (key == 'c' || key == 'C') {
-                cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
-            } else if (key == 'v' || key == 'V') {
+            if (key == 'v' || key == 'V') {
                 cameraMode = CAM_EXTERNAL;
                 if (cam.orbitDistance > 16.0f || cam.orbitDistance < 10.0f) { cam.orbitDistance = 14.0f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
             } else {
                 cameraMode = CAM_INTERIOR;
             }
         } else if (key == 13) {
-            // Skip intro
+            // Skip intro: land the hull on the seafloor instead of a
+            // hard-coded depth that could bury it in the terrain.
+            float fy = seaFloorY(sub.x, sub.z) + 1.18f * SUB_SCALE;
             gameState = STATE_MENU;
             diveTimer = 6000.0f;
             diveTransition = 1.0f;
-            sub.y = -13.0f;
+            sub.y = fy;
         }
         return;
     }
@@ -5509,10 +5593,8 @@ void keyboardDown(unsigned char key, int x, int y) {
     if (cameraMode == CAM_CONTROL_SCREEN) {
         // First-person walk: W/A/S/D handled continuously in updateCrewWalk().
         // Submarine controls are disabled here; only camera/UI keys work.
-        if (key == 'c' || key == 'C') {
-            cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
-            userCameraChoice = true;
-        } else if (key == 'v' || key == 'V') {
+        // C is disabled: only V (external) / I (interior) pick a direct angle.
+        if (key == 'v' || key == 'V') {
             cameraMode = CAM_EXTERNAL;
             userCameraChoice = true;
             if (cam.orbitDistance > 16.0f || cam.orbitDistance < 10.0f) { cam.orbitDistance = 14.0f; cam.orbitAngleH = 30.0f; cam.orbitAngleV = 15.0f; }
@@ -5560,14 +5642,7 @@ void keyboardDown(unsigned char key, int x, int y) {
     case 'l': case 'L':
         sub.headlightsOn = !sub.headlightsOn;
         break;
-    case 'c': case 'C':
-        cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
-        userCameraChoice = true;
-        if (cameraMode == CAM_CONTROL_SCREEN) {
-            cam.freeX = 0; cam.freeY = 0; cam.freeZ = 0;
-            cam.freeYaw = 0; cam.freePitch = 0;
-        }
-        break;
+    // No C camera cycling: the mission keeps the single preset angle.
     case 'v': case 'V':
         cameraMode = CAM_EXTERNAL;
         userCameraChoice = true;
@@ -5690,6 +5765,14 @@ static bool cabinButtonHit(int mx, int my) {
     return dist < 30.0;
 }
 
+// Bottom-centre "SKIP INTRO" button hit test (GLUT mouse coords, top-left
+// origin; the ortho overlay draws the same rect with y in [28, 76]).
+bool introSkipButtonHit(int mx, int my) {
+    const int bx0 = windowWidth / 2 - 105, bx1 = windowWidth / 2 + 105;
+    const int by0 = windowHeight - 76, by1 = windowHeight - 28;
+    return mx >= bx0 && mx <= bx1 && my >= by0 && my <= by1;
+}
+
 void mouse(int button, int state, int mx, int my) {
     if (button == GLUT_LEFT_BUTTON) {
         if (state == GLUT_DOWN) {
@@ -5708,12 +5791,18 @@ void mouse(int button, int state, int mx, int my) {
             // the camera mode to the next one (same as the C key).
             if (clickPending) {
                 clickPending = false;
-                if (gameState == STATE_PLAYING && cameraMode == CAM_CONTROL_SCREEN) {
+                if (gameState == STATE_INTRO || gameState == STATE_DIVING) {
+                    if (introSkipButtonHit(btnPressX, btnPressY)) {
+                        // Skip intro: land the hull on the seafloor
+                        float fy = seaFloorY(sub.x, sub.z) + 1.18f * SUB_SCALE;
+                        gameState = STATE_MENU;
+                        diveTimer = 6000.0f;
+                        diveTransition = 1.0f;
+                        sub.y = fy;
+                    }
+                } else if (gameState == STATE_PLAYING && cameraMode == CAM_CONTROL_SCREEN) {
                     if (cabinButtonHit(btnPressX, btnPressY)) {
                         hatchDirOpen = !hatchDirOpen;
-                    } else {
-                        cameraMode = (CameraMode)((cameraMode + 1) % CAM_COUNT);
-                        userCameraChoice = true;
                     }
                 }
             }
@@ -5836,7 +5925,7 @@ int main(int argc, char** argv) {
     printf("  R/F     - Pitch Up/Down\n");
     printf("  Q/E     - Roll Left/Right\n");
     printf("  L       - Toggle Headlights\n");
-    printf("  C       - Change Camera Mode\n");
+    printf("  V / I   - External / Interior view\n");
     printf("  V       - External View\n");
     printf("  I       - Interior View\n");
     printf("  SPACE   - Emergency Stop\n");
