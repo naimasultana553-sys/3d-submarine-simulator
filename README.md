@@ -153,6 +153,12 @@ actively avoid the hull.
 ### 21. HUD
 Depth (m) · speed (knots) · `LIGHT ON/OFF` · `ENGINE ACTIVE/IDLE` · camera name ·
 mission name · mission timer · mini control card. Cyan-on-translucent panels stay
+### 22. Bangladesh hull-side livery (bd)
+Long dark-green band runs the full mid-hull (port + starboard) with a centered
+red disk pulled flush against it - matches the reference image exactly (no texture
+file needed, drawn as flat GL_QUADS + GL_TRIANGLE_FAN while lighting is off). The
+grey-hull look from the screenshot is preserved under the band.
+
 readable in bright and dark water.
 
 ---
@@ -190,10 +196,18 @@ submarine.exe
 ---
 
 ## 📁 Project layout
+```text
+3D Sunmarine Simulator/
+?? submarine.cpp    # entire simulator (~6000 lines), flat at repo root
+?? submarine.cbp    # Code::Blocks project (Debug + Release)
+?? README.md        # this file
+?? bd.bmp           # Bangladesh livery plate texture (optional, hull-side badge)
+?? ocean_view.bmp   # exterior window / ocean texture
+?? Submarine_Simulator_Simple_Boxed_OpenGL_Guide.pdf  # design/function spec reference (PDF)
+```
+
 
 ```text
-3D Submarine Simulator/
-├── submarine.cpp   # entire simulator (~2300 lines)
 ├── submarine.cbp   # Code::Blocks project (Debug + Release)
 ├── README.md       # this file
 ├── .gitignore      # obj/, bin/, *.exe
@@ -214,4 +228,6 @@ Collision warning text · sonar minimap · treasure/ring checkpoints · engine a
 
 ## 📄 License
 MIT — free for coursework, portfolios and remixes.
+
+
 
