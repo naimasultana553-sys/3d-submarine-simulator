@@ -1348,23 +1348,41 @@ void drawFullSubmarine() {
     glDisable(GL_FOG);
     drawSubmarineBody();
     if (fogBefore) glEnable(GL_FOG);
-        // bd logo plate on the hull side (port), slightly proud, camera-lit
-        if (texBd) {
-            glEnable(GL_TEXTURE_2D);
-            glBindTexture(GL_TEXTURE_2D, texBd);
-            glColor3f(1.0f, 1.0f, 1.0f);
-            float pw = 0.58f, ph = 0.46f;
-            float px0 = 0.03f, py0 = 0.0f, pz0 = 0.90f;
-            glPushMatrix();
-            glTranslatef(1.20f, 0.0f, 0.90f);
-            glBegin(GL_QUADS);
-            glTexCoord2f(0, 0); glVertex3f(0, -ph*0.5f, -pw*0.5f);
-            glTexCoord2f(1, 0); glVertex3f(0, -ph*0.5f,  pw*0.5f);
-            glTexCoord2f(1, 1); glVertex3f(0,  ph*0.5f,  pw*0.5f);
-            glTexCoord2f(0, 1); glVertex3f(0,  ph*0.5f, -pw*0.5f);
-            glEnd();
-            glPopMatrix();
+        // Bangladesh livery - long green band + centered red disk (matches reference image exactly)
+        {
+            glDisable(GL_LIGHTING);
             glDisable(GL_TEXTURE_2D);
+            const float Ry = 1.15f; // must match drawSubmarineBody R
+            float y0 = 0.06f;
+            float bandH = 0.17f;
+            float x0 = -3.25f, x1 = 2.78f;
+            float zBias = 0.018f;
+            auto drawLiverySide = [&](float sgn){
+                float zOut = sgn * (Ry + zBias);
+                glColor3f(0.06f, 0.42f, 0.26f);
+                glBegin(GL_QUADS);
+                glVertex3f(x0, y0 - bandH*0.5f, zOut);
+                glVertex3f(x1, y0 - bandH*0.5f, zOut);
+                glVertex3f(x1, y0 + bandH*0.5f, zOut);
+                glVertex3f(x0, y0 + bandH*0.5f, zOut);
+                glEnd();
+                float cx = 0.55f;
+                float cy = y0;
+                float r = 0.11f;
+                float zd = sgn * (Ry + zBias + 0.008f);
+                glColor3f(0.92f, 0.15f, 0.18f);
+                glBegin(GL_TRIANGLE_FAN);
+                glVertex3f(cx, cy, zd);
+                const int SEG = 32;
+                for(int k=0;k<=SEG;k++){
+                    float a = 6.2831853f * (float)k / (float)SEG;
+                    glVertex3f(cx + r*cosf(a), cy + r*sinf(a), zd);
+                }
+                glEnd();
+            };
+            drawLiverySide( 1.0f);
+            drawLiverySide(-1.0f);
+            glEnable(GL_LIGHTING);
         }
     drawPropeller();
     drawSubmarineHeadlights();
