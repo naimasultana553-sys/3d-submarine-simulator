@@ -284,7 +284,7 @@ void drawTorus(float inner, float outer, int sides = 16, int rings = 32) {
 // PROCEDURAL TEXTURES (realistic sky / water / metal / sand,
 // soft cloud sprites ÃŽâ€œÃƒâ€¡ÃƒÂ¶ generated in code, no image files needed)
 // ============================================================
-GLuint texSky = 0, texWater = 0, texSand = 0, texHull = 0, texPuff = 0, texOceanView = 0;
+GLuint texSky = 0, texWater = 0, texSand = 0, texHull = 0, texPuff = 0, texOceanView = 0, texBd = 0;
 
 static unsigned int hashNoise(int x, int y, int seed) {
     unsigned int h = (unsigned int)(x * 374761393 + y * 668265263 + seed * 1442695041);
@@ -474,10 +474,7 @@ void initTextures() {
             free(data);
         }
     }
-}
-
-        GLuint texBd = 0;
-        {
+    {
         const char* tryFilesBd[] = {"bd.bmp","3D Submarine Simulator/bd.bmp","bin/Debug/bd.bmp","bin/Release/bd.bmp","../bd.bmp"};
         for (int t=0; t<5 && !texBd; t++) {
             FILE* f = fopen(tryFilesBd[t], "rb");
@@ -502,7 +499,8 @@ void initTextures() {
             texBd = uploadTexture(w, h, data, false, false);
             free(data);
         }
-        }
+    }
+}
 // Camera-facing textured quad (for clouds / glows). Caller binds texture,
 // enables blending and sets color. Must be called after camera is set.
 void drawBillboard(float x, float y, float z, float w, float h) {
@@ -1352,36 +1350,42 @@ void drawFullSubmarine() {
         {
             glDisable(GL_LIGHTING);
             glDisable(GL_TEXTURE_2D);
-            const float Ry = 1.15f; // must match drawSubmarineBody R
+            const float Ry = 1.15f;
             float y0 = 0.06f;
             float bandH = 0.17f;
             float x0 = -3.25f, x1 = 2.78f;
             float zBias = 0.018f;
-            auto drawLiverySide = [&](float sgn){
-                float zOut = sgn * (Ry + zBias);
-                glColor3f(0.06f, 0.42f, 0.26f);
-                glBegin(GL_QUADS);
-                glVertex3f(x0, y0 - bandH*0.5f, zOut);
-                glVertex3f(x1, y0 - bandH*0.5f, zOut);
-                glVertex3f(x1, y0 + bandH*0.5f, zOut);
-                glVertex3f(x0, y0 + bandH*0.5f, zOut);
-                glEnd();
-                float cx = 0.55f;
-                float cy = y0;
-                float r = 0.11f;
-                float zd = sgn * (Ry + zBias + 0.008f);
-                glColor3f(0.92f, 0.15f, 0.18f);
-                glBegin(GL_TRIANGLE_FAN);
-                glVertex3f(cx, cy, zd);
-                const int SEG = 32;
-                for(int k=0;k<=SEG;k++){
-                    float a = 6.2831853f * (float)k / (float)SEG;
-                    glVertex3f(cx + r*cosf(a), cy + r*sinf(a), zd);
-                }
-                glEnd();
-            };
-            drawLiverySide( 1.0f);
-            drawLiverySide(-1.0f);
+            float zOut, zd, cx, cy, r;
+            // port side
+            zOut = Ry + zBias;
+            glColor3f(0.06f, 0.42f, 0.26f);
+            glBegin(GL_QUADS);
+            glVertex3f(x0, y0 - bandH*0.5f, zOut);
+            glVertex3f(x1, y0 - bandH*0.5f, zOut);
+            glVertex3f(x1, y0 + bandH*0.5f, zOut);
+            glVertex3f(x0, y0 + bandH*0.5f, zOut);
+            glEnd();
+            cx = 0.55f; cy = y0; r = 0.11f; zd = Ry + zBias + 0.008f;
+            glColor3f(0.92f, 0.15f, 0.18f);
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex3f(cx, cy, zd);
+            for(int k=0;k<=32;k++){ float a = 6.2831853f * (float)k / 32.0f; glVertex3f(cx + r*cosf(a), cy + r*sinf(a), zd); }
+            glEnd();
+            // starboard side
+            zOut = -(Ry + zBias);
+            glColor3f(0.06f, 0.42f, 0.26f);
+            glBegin(GL_QUADS);
+            glVertex3f(x0, y0 - bandH*0.5f, zOut);
+            glVertex3f(x1, y0 - bandH*0.5f, zOut);
+            glVertex3f(x1, y0 + bandH*0.5f, zOut);
+            glVertex3f(x0, y0 + bandH*0.5f, zOut);
+            glEnd();
+            cx = 0.55f; cy = y0; r = 0.11f; zd = -(Ry + zBias + 0.008f);
+            glColor3f(0.92f, 0.15f, 0.18f);
+            glBegin(GL_TRIANGLE_FAN);
+            glVertex3f(cx, cy, zd);
+            for(int k=0;k<=32;k++){ float a = 6.2831853f * (float)k / 32.0f; glVertex3f(cx + r*cosf(a), cy + r*sinf(a), zd); }
+            glEnd();
             glEnable(GL_LIGHTING);
         }
     drawPropeller();
