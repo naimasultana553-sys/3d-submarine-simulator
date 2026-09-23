@@ -203,7 +203,7 @@ submarine.exe
 ?? README.md        # this file
 ?? bd.bmp           # Bangladesh livery plate texture (optional, hull-side badge)
 ?? ocean_view.bmp   # exterior window / ocean texture
-?? Submarine_Simulator_Simple_Boxed_OpenGL_Guide.pdf  # design/function spec reference (PDF)
+?? Submarine_Simulator_Simple_Boxed_OpenGL_Guide.pdf  # functions / how-it-works reference document
 ```
 
 
