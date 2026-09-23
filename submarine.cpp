@@ -1,5 +1,4 @@
-﻿#ifdef _WIN32
-#include <windows.h>
+#ifdef _WIN32
 #endif
 #include <GL/gl.h>
 #include <GL/glu.h>
@@ -60,7 +59,7 @@ const float SUB_SCALE = 1.4f;
 const float SUB_LEN = 1.5f;
 const float BOW_TIP = 3.9f * 1.4f * 1.5f;
 
-// Interior scale for crew room ΓÇö geometry enlarged more than eye height
+// Interior scale for crew room ÃŽâ€œÃƒâ€¡ÃƒÂ¶ geometry enlarged more than eye height
 // so the space genuinely feels bigger when walking around.
 const float INT_SX = 1.70f;   // stretch front-to-back (length)
 const float INT_SY = 1.30f;   // modest height increase
@@ -283,7 +282,7 @@ void drawTorus(float inner, float outer, int sides = 16, int rings = 32) {
 
 // ============================================================
 // PROCEDURAL TEXTURES (realistic sky / water / metal / sand,
-// soft cloud sprites ΓÇö generated in code, no image files needed)
+// soft cloud sprites ÃŽâ€œÃƒâ€¡ÃƒÂ¶ generated in code, no image files needed)
 // ============================================================
 GLuint texSky = 0, texWater = 0, texSand = 0, texHull = 0, texPuff = 0, texOceanView = 0;
 
@@ -477,6 +476,33 @@ void initTextures() {
     }
 }
 
+        GLuint texBd = 0;
+        {
+        const char* tryFilesBd[] = {"bd.bmp","3D Submarine Simulator/bd.bmp","bin/Debug/bd.bmp","bin/Release/bd.bmp","../bd.bmp"};
+        for (int t=0; t<5 && !texBd; t++) {
+            FILE* f = fopen(tryFilesBd[t], "rb");
+            if (!f) continue;
+            unsigned char hdr[54];
+            if (fread(hdr,1,54,f)!=54) { fclose(f); continue; }
+            int w = hdr[18]|hdr[19]<<8|hdr[20]<<16|hdr[21]<<24;
+            int h = hdr[22]|hdr[23]<<8|hdr[24]<<16|hdr[25]<<24;
+            int bpp = hdr[28]|hdr[29]<<8;
+            int off = hdr[10]|hdr[11]<<8|hdr[12]<<16|hdr[13]<<24;
+            if ((bpp!=24 && bpp!=32) || w<=0 || h<=0 || w>4096 || h>4096) { fclose(f); continue; }
+            int rowPad = (bpp==24) ? (4 - (w*3)%4)%4 : 0;
+            unsigned char* data = (unsigned char*)malloc(w*h*3);
+            if (!data) { fclose(f); continue; }
+            fseek(f, off, SEEK_SET);
+            for (int y=h-1; y>=0; y--) {
+                unsigned char* row = data + y*w*3;
+                for (int x=0;x<w;x++) { unsigned char b=fgetc(f), g=fgetc(f), r=fgetc(f); if(bpp==32) fgetc(f); row[x*3]=r; row[x*3+1]=g; row[x*3+2]=b; }
+                for (int p=0;p<rowPad;p++) fgetc(f);
+            }
+            fclose(f);
+            texBd = uploadTexture(w, h, data, false, false);
+            free(data);
+        }
+        }
 // Camera-facing textured quad (for clouds / glows). Caller binds texture,
 // enables blending and sets color. Must be called after camera is set.
 void drawBillboard(float x, float y, float z, float w, float h) {
@@ -855,7 +881,7 @@ void drawSubmarineBody() {
 
     // ---- panoramic bow viewport like FRONT VIEW reference: wide horizontal
     //      letterbox recessed FLUSH into the bow face, thin frame, no
-    //      forward balcony ΓÇö window plane is Y-Z facing +X ----
+    //      forward balcony ÃŽâ€œÃƒâ€¡ÃƒÂ¶ window plane is Y-Z facing +X ----
     {
         const float hw = 0.52f;
         const float hh = 0.20f;
@@ -1322,6 +1348,24 @@ void drawFullSubmarine() {
     glDisable(GL_FOG);
     drawSubmarineBody();
     if (fogBefore) glEnable(GL_FOG);
+        // bd logo plate on the hull side (port), slightly proud, camera-lit
+        if (texBd) {
+            glEnable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, texBd);
+            glColor3f(1.0f, 1.0f, 1.0f);
+            float pw = 0.58f, ph = 0.46f;
+            float px0 = 0.03f, py0 = 0.0f, pz0 = 0.90f;
+            glPushMatrix();
+            glTranslatef(1.20f, 0.0f, 0.90f);
+            glBegin(GL_QUADS);
+            glTexCoord2f(0, 0); glVertex3f(0, -ph*0.5f, -pw*0.5f);
+            glTexCoord2f(1, 0); glVertex3f(0, -ph*0.5f,  pw*0.5f);
+            glTexCoord2f(1, 1); glVertex3f(0,  ph*0.5f,  pw*0.5f);
+            glTexCoord2f(0, 1); glVertex3f(0,  ph*0.5f, -pw*0.5f);
+            glEnd();
+            glPopMatrix();
+            glDisable(GL_TEXTURE_2D);
+        }
     drawPropeller();
     drawSubmarineHeadlights();
 
@@ -2324,7 +2368,7 @@ void drawSharks() {
         glRotatef(-(s.angle * 180.0f / PI) - 90.0f, 0, 1, 0);
         glScalef(s.size, s.size, s.size);
 
-        // deep steel blue-grey ΓÇö no more pale / white-looking sharks
+        // deep steel blue-grey ÃŽâ€œÃƒâ€¡ÃƒÂ¶ no more pale / white-looking sharks
         float topR = 0.30f, topG = 0.38f, topB = 0.48f;
         float finR = 0.24f, finG = 0.30f, finB = 0.38f;
         GLfloat sharkSpec[] = { 0.10f, 0.12f, 0.16f, 1.0f };
@@ -5936,3 +5980,4 @@ int main(int argc, char** argv) {
     glutMainLoop();
     return 0;
 }
+
